@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light" />
+  <title>Macrosoft Access</title>
+  <link rel="stylesheet" href="/src/styles.css" />
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <header class="titlebar">
+      <div class="quick-access" aria-label="Quick access toolbar">
+        <button class="icon-button" data-action="save" title="Save (⌘S)">▣</button>
+        <button class="icon-button" data-action="undo" title="Undo" disabled>↶</button>
+        <button class="icon-button" data-action="redo" title="Redo" disabled>↷</button>
+      </div>
+      <div class="document-title"><img class="app-mark" src="/assets/logo-transparent.png" alt="" /><span id="windowTitle">Macrosoft Access</span></div>
+      <button class="title-search" data-action="command-palette" title="Search commands and objects (⌘K)"><span>⌕</span> Tell me what you want to do</button>
+      <div class="title-spacer"></div>
+    </header>
+
+    <nav class="ribbon-tabs" aria-label="Ribbon tabs">
+      <button class="file-tab" data-tab="file">File</button>
+      <button class="ribbon-tab active" data-tab="home">Home</button>
+      <button class="ribbon-tab" data-tab="create">Create</button>
+      <button class="ribbon-tab" data-tab="external">External Data</button>
+      <button class="ribbon-tab" data-tab="tools">Database Tools</button>
+      <span class="context-ribbon-label hidden" id="contextRibbonLabel">TABLE TOOLS</span>
+      <button class="ribbon-tab contextual hidden" data-tab="table-fields">Fields</button>
+      <button class="ribbon-tab contextual hidden" data-tab="table-design">Table Design</button>
+      <button class="ribbon-tab contextual hidden" data-tab="query-tools">Query Tools</button>
+      <button class="ribbon-tab contextual hidden" data-tab="form-tools">Form Tools</button>
+      <button class="ribbon-tab contextual hidden" data-tab="report-tools">Report Tools</button>
+    </nav>
+
+    <section id="ribbon" class="ribbon" aria-label="Command ribbon">
+      <div class="ribbon-page active" data-page="home">
+        <div class="command-group">
+          <button class="command large" data-action="view"><span class="command-icon">▦</span><span>View</span></button>
+          <div class="command-stack">
+            <button class="command" data-action="save"><span>▣</span> Save</button>
+            <button class="command" data-action="refresh"><span>↻</span> Refresh</button>
+          </div><span class="group-label">Views</span>
+        </div>
+        <div class="command-group">
+          <button class="command large" data-action="paste"><span class="command-icon">▤</span><span>Paste</span></button>
+          <div class="command-stack"><button class="command" data-action="copy">⧉ Copy</button><button class="command" data-action="delete">⌫ Delete</button></div>
+          <span class="group-label">Clipboard</span>
+        </div>
+        <div class="command-group">
+          <button class="command large" data-action="filter-records"><span class="command-icon">≡</span><span>Filter</span></button>
+          <div class="command-stack"><button class="command" data-action="clear-filter">× Clear filter</button><button class="command" data-action="find-record">⌕ Find record</button></div>
+          <span class="group-label">Filter & Search</span>
+        </div>
+        <div class="command-group">
+          <button class="command large" data-action="new-record"><span class="command-icon">＋</span><span>New</span></button>
+          <div class="command-stack"><button class="command" data-action="save-record">✓ Save record</button><button class="command" data-action="delete-record">⌫ Delete record</button></div>
+          <span class="group-label">Records</span>
+        </div>
+        <div class="command-group">
+          <button class="command large" data-action="find"><span class="command-icon">⌕</span><span>Find</span></button>
+          <div class="command-stack"><button class="command" data-action="sort-asc">A→Z Ascending</button><button class="command" data-action="sort-desc">Z→A Descending</button></div>
+          <span class="group-label">Find</span>
+        </div>
+      </div>
+
+      <div class="ribbon-page" data-page="create">
+        <div class="command-group">
+          <button class="command large" data-action="create-table"><span class="command-icon">▦</span><span>Table</span></button>
+          <button class="command large" data-action="create-table"><span class="command-icon">⚒</span><span>Table Design</span></button><span class="group-label">Tables</span>
+        </div>
+        <div class="command-group">
+          <button class="command large" data-action="query-design"><span class="command-icon">⌘</span><span>Query Design</span></button>
+          <button class="command large" data-action="sql-query"><span class="command-icon">SQL</span><span>SQL Query</span></button><span class="group-label">Queries</span>
+        </div>
+        <div class="command-group">
+          <button class="command large" data-action="create-form"><span class="command-icon">▣</span><span>Form</span></button>
+          <button class="command large" data-action="create-report"><span class="command-icon">▥</span><span>Report</span></button><span class="group-label">Forms & Reports</span>
+        </div>
+      </div>
+
+      <div class="ribbon-page" data-page="external">
+        <div class="command-group">
+          <button class="command large" data-action="import-database"><span class="command-icon">⇥</span><span>Import Access</span></button>
+          <button class="command large" data-action="import-csv"><span class="command-icon">CSV</span><span>Import CSV</span></button><span class="group-label">Import & Link</span>
+        </div>
+        <div class="command-group"><button class="command large" data-action="export-csv"><span class="command-icon">⇥</span><span>Export CSV</span></button><button class="command large" data-action="export-pdf"><span class="command-icon">PDF</span><span>Export PDF</span></button><span class="group-label">Export</span></div>
+      </div>
+
+      <div class="ribbon-page" data-page="tools">
+        <div class="command-group">
+          <button class="command large" data-action="relationships"><span class="command-icon">⌘</span><span>Relationships</span></button>
+          <button class="command large" data-action="database-info"><span class="command-icon">ⓘ</span><span>Database Info</span></button>
+          <button class="command large" data-action="compact"><span class="command-icon">◫</span><span>Compact</span></button><span class="group-label">Tools</span>
+        </div>
+        <div class="command-group"><button class="command large" data-action="sql-query"><span class="command-icon">SQL</span><span>SQL Console</span></button><button class="command large" data-action="integrity-check"><span class="command-icon">✓</span><span>Check Health</span></button><button class="command large" data-action="backup"><span class="command-icon">⧉</span><span>Backup</span></button><span class="group-label">Advanced</span></div>
+      </div>
+
+      <div class="ribbon-page" data-page="table-fields">
+        <div class="command-group"><button class="command large" data-action="add-field"><span class="command-icon">＋</span><span>Add Field</span></button><button class="command large" data-action="create-index"><span class="command-icon">◆</span><span>Index</span></button><span class="group-label">Fields & Indexes</span></div>
+        <div class="command-group"><button class="command large" data-action="datasheet-view"><span class="command-icon">▦</span><span>Datasheet</span></button><button class="command large" data-action="design-view"><span class="command-icon">⚒</span><span>Design</span></button><span class="group-label">View</span></div>
+      </div>
+      <div class="ribbon-page" data-page="table-design">
+        <div class="command-group"><button class="command large" data-action="design-view"><span class="command-icon">⚒</span><span>Design View</span></button><button class="command large" data-action="create-index"><span class="command-icon">◆</span><span>Indexes</span></button><button class="command large" data-action="relationships"><span class="command-icon">⌘</span><span>Relationships</span></button><span class="group-label">Table Design</span></div>
+      </div>
+      <div class="ribbon-page" data-page="query-tools">
+        <div class="command-group"><button class="command large" data-action="run-query"><span class="command-icon">▶</span><span>Run</span></button><button class="command large" data-action="save-query"><span class="command-icon">▣</span><span>Save Query</span></button><button class="command large" data-action="query-design"><span class="command-icon">⚒</span><span>Design</span></button><span class="group-label">Query Tools</span></div>
+      </div>
+      <div class="ribbon-page" data-page="form-tools">
+        <div class="command-group"><button class="command large" data-action="new-form-record"><span class="command-icon">＋</span><span>New Record</span></button><button class="command large" data-action="save-form-record"><span class="command-icon">▣</span><span>Save Record</span></button><button class="command large" data-action="find-record"><span class="command-icon">⌕</span><span>Find</span></button><span class="group-label">Form Tools</span></div>
+      </div>
+      <div class="ribbon-page" data-page="report-tools">
+        <div class="command-group"><button class="command large" data-action="print"><span class="command-icon">▥</span><span>Print</span></button><button class="command large" data-action="export-pdf"><span class="command-icon">PDF</span><span>Export PDF</span></button><button class="command large" data-action="export-csv"><span class="command-icon">CSV</span><span>Export Data</span></button><span class="group-label">Report Tools</span></div>
+      </div>
+    </section>
+
+    <main class="workspace">
+      <aside class="navigation-pane">
+        <div class="pane-heading"><strong>All Objects</strong><button class="icon-button" id="collapseNav" title="Collapse navigation">«</button></div>
+        <label class="search-box"><span>⌕</span><input id="objectSearch" type="search" placeholder="Search objects" /></label>
+        <div id="objectTree" class="object-tree"></div>
+      </aside>
+
+      <section class="document-area">
+        <div id="documentTabs" class="document-tabs" role="tablist"></div>
+        <div id="documentSurface" class="document-surface">
+          <div class="welcome">
+            <img class="welcome-emblem" src="/assets/logo-transparent.png" alt="Macrosoft Access logo" />
+            <h1>Build a database</h1>
+            <p>Create a local database or open an existing project. Your data stays on this Mac.</p>
+            <div class="welcome-actions">
+              <button class="primary-button" data-action="new">New blank database</button>
+              <button class="secondary-button" data-action="open">Open database</button>
+            </div>
+            <div class="feature-list">
+              <span>▦ Editable tables</span><span>⌘ Visual and SQL queries</span><span>▣ Forms</span><span>▥ Printable reports</span>
+            </div>
+          </div>
+        </div>
+      </section>
+      <aside id="propertyPane" class="property-pane hidden"></aside>
+    </main>
+
+    <footer class="statusbar"><span id="statusText">Ready</span><span class="status-right"><span id="recordStatus"></span><button data-action="datasheet-view" title="Datasheet view">▦</button><button data-action="design-view" title="Design view">⚒</button><input aria-label="Zoom" type="range" min="70" max="150" value="100" id="zoomRange" /><span id="zoomLabel">100%</span></span></footer>
+  </div>
+
+  <div id="backstage" class="backstage hidden" role="dialog" aria-label="File menu">
+    <aside class="backstage-nav"><button class="backstage-back" data-action="close-file" aria-label="Back to database">←</button><h2>File</h2><button data-file-page="info" class="active">Info</button><button data-file-page="new">New</button><button data-file-page="open">Open</button><button data-action="save">Save</button><button data-action="save-as">Save As</button><button data-file-page="import">Import</button><button data-file-page="export">Export</button><button data-file-page="options">Options</button><button data-file-page="help">Help</button><button data-action="close-database">Close Database</button></aside>
+    <section id="backstageContent" class="backstage-content"></section>
+  </div>
+
+  <div id="contextMenu" class="context-menu hidden" role="menu"></div>
+
+  <dialog id="tableDialog" class="app-dialog">
+    <form method="dialog" id="tableForm"><header><h2>Create table</h2><button value="cancel" aria-label="Close">×</button></header>
+      <label>Table name<input id="tableName" required value="Table1" /></label>
+      <label>Fields <span class="hint">one per line: name TYPE constraints</span><textarea id="tableFields" rows="8">id INTEGER PRIMARY KEY AUTOINCREMENT
+name TEXT NOT NULL
+created_at TEXT</textarea></label>
+      <footer><button value="cancel" class="secondary-button">Cancel</button><button value="default" id="confirmTable" class="primary-button">Create</button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="saveQueryDialog" class="app-dialog small-dialog"><form method="dialog"><header><h2>Save query</h2><button value="cancel">×</button></header><label>Query name<input id="queryName" value="Query1" /></label><footer><button value="cancel" class="secondary-button">Cancel</button><button id="confirmSaveQuery" value="default" class="primary-button">Save</button></footer></form></dialog>
+
+  <dialog id="commandPalette" class="command-palette">
+    <header><span>⌕</span><input id="commandInput" placeholder="Search commands, tables, queries, forms, reports…" autocomplete="off" /></header>
+    <div id="commandResults" class="command-results"></div>
+    <footer><span>↑↓ Navigate</span><span>↵ Open</span><span>esc Close</span></footer>
+  </dialog>
+  <div id="toastRegion" class="toast-region" aria-live="polite"></div>
+  <script type="module" src="/src/app.js"></script>
+</body>
+</html>
