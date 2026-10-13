@@ -4,6 +4,7 @@ import logoUrl from '../assets/logo-transparent.png';
 import { migrateMetadata, METADATA_VERSION } from './metadata.js';
 import { createImportReport, uniqueHeaders } from './compatibility.js';
 import { defaultFormSettings, normalizeFormSettings, FORM_CONTROL_TYPES } from './form-model.js';
+import { fieldMapping } from './access-schema.js';
 
 const SQL = await initSqlJs({ locateFile: () => wasmUrl });
 
@@ -262,19 +263,20 @@ async function importAccessDatabase(file) {
       const data = parseCsv(table.csv);
       if (!data.length || !data[0].length) throw new Error(`Table “${table.name}” has no readable column headers.`);
       const headers = uniqueHeaders(data[0]);
+      const fields = fieldMapping(headers, table.schema);
       const base = String(table.name).replace(/[^\p{L}\p{N}_ ]/gu, '_') || 'ImportedTable';
       let safeName = base;
       let suffix = 2;
       while (used.has(safeName.toLocaleLowerCase()) || safeName.startsWith('_mda_')) safeName = `${base}_${suffix++}`;
       used.add(safeName.toLocaleLowerCase());
-      incoming.run(`CREATE TABLE ${quoteId(safeName)} (${headers.map(h => `${quoteId(h)} TEXT`).join(', ')})`);
+      incoming.run(`CREATE TABLE ${quoteId(safeName)} (${fields.map(field => `${quoteId(field.name)} ${field.targetType}`).join(', ')})`);
       const records = Math.max(0, data.length - 1);
       if (records) {
         const insert = incoming.prepare(`INSERT INTO ${quoteId(safeName)} VALUES (${headers.map(() => '?').join(',')})`);
         try { for (const row of data.slice(1)) { insert.run(headers.map((_, i) => row[i] ?? null)); count++; } }
         finally { insert.free(); }
       }
-      details.push({ source: table.name, target: safeName, columns: headers.length, records });
+      details.push({ source: table.name, target: safeName, columns: headers.length, records, fields, warning: table.schemaWarning });
     }
     const report = createImportReport(file.name, details, count);
     incoming.run("INSERT INTO _mda_meta(key,value) VALUES('import_report',?)", [JSON.stringify(report)]);
@@ -960,7 +962,7 @@ function showCompatibilityReport() {
     return;
   }
   const list = (items) => `<ul class="compat-list">${items.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
-  $('#documentSurface').innerHTML = `<article class="database-dashboard compatibility-report"><h1>Import compatibility report</h1><p>Source: <strong>${escapeHtml(report.sourceName)}</strong> · ${escapeHtml(new Date(report.importedAt).toLocaleString())}</p><div class="summary-strip"><div class="summary-item"><strong>${Number(report.tableCount) || 0}</strong><span>Tables converted</span></div><div class="summary-item"><strong>${Number(report.recordCount) || 0}</strong><span>Rows imported</span></div></div><section class="compat-warning" role="status">${escapeHtml(report.warning)}</section><h2>Imported tables</h2><table class="schema-grid"><thead><tr><th>Source</th><th>Local table</th><th>Columns</th><th>Rows</th></tr></thead><tbody>${(report.tables || []).map(table => `<tr><td>${escapeHtml(table.source)}</td><td>${escapeHtml(table.target)}</td><td>${Number(table.columns) || 0}</td><td>${Number(table.records) || 0}</td></tr>`).join('')}</tbody></table><h2>Preserved</h2>${list(report.preserved || [])}<h2>Converted</h2>${list(report.converted || [])}<h2>Not imported</h2>${list(report.unsupported || [])}<p class="compat-note">Project metadata version: ${METADATA_VERSION}. The Access source file was not modified.</p></article>`;
+  $('#documentSurface').innerHTML = `<article class="database-dashboard compatibility-report"><h1>Import compatibility report</h1><p>Source: <strong>${escapeHtml(report.sourceName)}</strong> · ${escapeHtml(new Date(report.importedAt).toLocaleString())}</p><div class="summary-strip"><div class="summary-item"><strong>${Number(report.tableCount) || 0}</strong><span>Tables converted</span></div><div class="summary-item"><strong>${Number(report.recordCount) || 0}</strong><span>Rows imported</span></div></div><section class="compat-warning" role="status">${escapeHtml(report.warning)}</section><h2>Imported tables</h2><table class="schema-grid"><thead><tr><th>Source</th><th>Local table</th><th>Columns</th><th>Rows</th></tr></thead><tbody>${(report.tables || []).map(table => `<tr><td>${escapeHtml(table.source)}</td><td>${escapeHtml(table.target)}</td><td>${Number(table.columns) || 0}</td><td>${Number(table.records) || 0}</td></tr>`).join('')}</tbody></table>${(report.tables || []).map(table => `<details class="compat-fields"><summary>${escapeHtml(table.target)}: field mappings</summary>${table.warning ? `<p>${escapeHtml(table.warning)}</p>` : ''}<ul>${(table.fields || []).map(field => `<li>${escapeHtml(field.name)}: ${escapeHtml(field.sourceType || 'Unknown')} → ${escapeHtml(field.targetType || 'TEXT')}</li>`).join('')}</ul></details>`).join('')}<h2>Preserved</h2>${list(report.preserved || [])}<h2>Converted</h2>${list(report.converted || [])}<h2>Not imported</h2>${list(report.unsupported || [])}<p class="compat-note">Project metadata version: ${METADATA_VERSION}. The Access source file was not modified.</p></article>`;
   setStatus('Import compatibility report', `${report.tableCount} tables · ${report.recordCount} records`);
 }
 

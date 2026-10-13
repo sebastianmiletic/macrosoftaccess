@@ -46,11 +46,11 @@ Native projects are SQLite databases. On a Mac, Access files are imported using 
 brew install mdbtools
 ```
 
-The **External Data → Import Access** command accepts `.mdb` and `.accdb` files and creates a new editable local database from their tables. `mdbtools` must be installed separately. No representative Access fixture was available for automated import testing, so import compatibility varies by file.
+The **External Data → Import Access** command accepts `.mdb` and `.accdb` files and creates a new editable local database from their tables. `mdbtools` must be installed separately. Import has been smoke-tested with public `mdbtools/mdbtestdata` `.mdb` and `.accdb` fixtures; other Access databases may contain unsupported data or objects.
 
 CSV exports can be imported into Microsoft Access as data. They are not native `.accdb` files and do not transfer forms or application logic.
 
-Imported columns are stored as SQLite `TEXT`, not their original Access types. Duplicate and blank headers are renamed for SQLite; the compatibility report records the target table names. Import leaves the original file untouched. It does **not** preserve Access forms, reports, macros, VBA, attachment semantics, query definitions, indexes, relationships, validation rules or every Access field type. It cannot save or round-trip `.accdb` files. Microsoft's proprietary Access engine is not provided for macOS. Imported data is saved into a new `.macrodb`, `.sqlite` or `.db` file.
+When `mdb-schema` can inspect a table, integer and floating-point fields are mapped to SQLite `INTEGER` or `REAL`; currency, decimal, date/time and text fields remain `TEXT` to avoid changing precision or interpreting locale-specific dates. If inspection fails, columns default to `TEXT`. Duplicate and blank headers are renamed for SQLite; the compatibility report records target table names and field mappings. Import leaves the original file untouched. It does **not** preserve Access forms, reports, macros, VBA, attachment semantics, query definitions, indexes, relationships, validation rules or every Access field type. It cannot save or round-trip `.accdb` files. Microsoft's proprietary Access engine is not provided for macOS. Imported data is saved into a new `.macrodb`, `.sqlite` or `.db` file.
 
 ## Roadmap status
 
@@ -77,4 +77,6 @@ node tests/smoke.mjs
 node tests/template-smoke.mjs
 # On another fresh test instance:
 node tests/form-smoke.mjs
+# Optional real-format integration test, with a fixture from mdbtools/mdbtestdata:
+ACCESS_FIXTURE=/path/to/ASampleDatabase.accdb node tests/access-import-smoke.mjs
 ```

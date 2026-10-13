@@ -12,7 +12,7 @@ This is an implementation tracker, not a statement of parity with any Microsoft 
 | Forms | Partial | Generated bound single-record editor with saved form title, captions, bound field visibility/required settings, text/long text/number/date/checkbox controls, reorder by drag or keyboard-accessible buttons. No free-placement designer, subforms, lookup controls, macros or events. |
 | Reports | Partial | Tabular report preview, print and PDF. No group pagination, layout designer or charts. |
 | Macros and scripting | Not implemented | No VBA interpreter, Access object model, macro builder or trusted script runtime. |
-| Import/export | Partial | CSV import/export; mdbtools `.mdb/.accdb` table data import with conversion report. No round-trip `.accdb`, query/form/report conversion, linked sources, Excel or ODBC. |
+| Import/export | Partial | CSV import/export; mdbtools `.mdb/.accdb` table data import with schema-informed SQLite integer/real mapping and conversion report. No round-trip `.accdb`, Access query/form/report conversion, linked sources, Excel or ODBC. |
 | Compatibility inspection | Partial | Conversion report lists imported tables, row counts and known unsupported families. Cannot inventory every unsupported Access object from the file. |
 | Settings and accessibility | Partial | Persisted theme/density/query limit and database table view, visible focus and reduced-motion support. No complete preference catalogue or audited VoiceOver support. |
 | Platform and distribution | Partial | macOS-only runtime and Apple Silicon DMG; signed where identity is available, not notarised. Linux is not supported yet. |
@@ -39,8 +39,8 @@ This is an implementation tracker, not a statement of parity with any Microsoft 
 | Format | Open/read | Modify in original format | Preserve Access objects |
 | --- | --- | --- | --- |
 | `.macrodb`, `.sqlite`, `.db` | Yes, as SQLite | Yes, save SQLite | Only this app's supported object metadata |
-| `.mdb`, `.accdb` | Table-data import through external mdbtools, if readable | No | No; forms, reports, macros, VBA and schema semantics are not preserved |
+| `.mdb`, `.accdb` | Table-data import through external mdbtools, if readable | No | Partially: table columns and some numeric affinities; forms, reports, macros, VBA, constraints and most schema semantics are not preserved |
 | `.csv` | Table import | Export CSV | No |
 | `.accde`, `.mde`, `.accdr`, `.laccdb`, `.ldb`, `.xlsx` | No | No | No |
 
-The imported Access source file is never intentionally modified. Always compare critical imported data with the original. No representative Access fixture is currently checked into the test suite.
+The imported Access source file is never intentionally modified. Always compare critical imported data with the original. Integration tests have been run against `.mdb` and `.accdb` examples from the public `mdbtools/mdbtestdata` repository. Fixtures are downloaded to a local temporary directory and are not included in this repository.

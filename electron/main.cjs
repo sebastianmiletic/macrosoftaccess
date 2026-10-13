@@ -214,7 +214,15 @@ ipcMain.handle('access:import', async (_event, filePath) => {
     const tables = [];
     for (const name of names) {
       const result = await execFileAsync(toolPath('mdb-export'), [filePath, name], { maxBuffer: 100 * 1024 * 1024 });
-      tables.push({ name, csv: result.stdout });
+      let schema = '';
+      let schemaWarning = null;
+      try {
+        const parsed = await execFileAsync(toolPath('mdb-schema'), ['-T', name, filePath, 'sqlite'], { maxBuffer: 10 * 1024 * 1024 });
+        schema = parsed.stdout;
+      } catch (error) {
+        schemaWarning = `Schema for “${name}” could not be inspected; imported columns will use TEXT (${error.message}).`;
+      }
+      tables.push({ name, csv: result.stdout, schema, schemaWarning });
     }
     return { ok: true, tables };
   } catch (error) {

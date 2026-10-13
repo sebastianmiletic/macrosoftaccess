@@ -1,6 +1,6 @@
 {
   "name": "macrosoft-access",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "A local-first visual relational database studio for macOS",
   "main": "electron/main.cjs",
   "type": "module",
@@ -9,7 +9,7 @@
     "start": "electron .",
     "build": "vite build",
     "dist:mac": "npm run build && electron-builder --mac",
-    "check": "node tests/metadata.test.mjs && node tests/compatibility.test.mjs && node tests/form-model.test.mjs && vite build"
+    "check": "node tests/metadata.test.mjs && node tests/compatibility.test.mjs && node tests/form-model.test.mjs && node tests/access-schema.test.mjs && vite build"
   },
   "dependencies": {
     "sql.js": "^1.13.0"
