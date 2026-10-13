@@ -12,7 +12,7 @@ This is an implementation tracker, not a statement of parity with any Microsoft 
 | Forms | Partial | Generated bound single-record editor with saved form title, captions, bound field visibility/required settings, text/long text/number/date/checkbox controls, reorder by drag or keyboard-accessible buttons. No free-placement designer, subforms, lookup controls, macros or events. |
 | Reports | Partial | Tabular preview, print/PDF and persisted Design View for title, column visibility/order and sorting. No grouping, pagination controls, calculated controls or charts. |
 | Macros and scripting | Not implemented | No VBA interpreter, Access object model, macro builder or trusted script runtime. |
-| Import/export | Partial | CSV import/export; mdbtools `.mdb/.accdb` table data import with schema-informed SQLite integer/real mapping and conversion report. A separate Java 17+/Jackcess exporter produces genuine new Access 2016 `.accdb` table-data files with strict numeric and binary rejection. No in-place `.accdb` editing, metadata/object round-trip, Access query/form/report conversion, linked sources, Excel or ODBC. |
+| Import/export | Partial | CSV import/export; mdbtools `.mdb/.accdb` table data import with schema-informed SQLite integer/real mapping and primary keys when valid, plus a conversion report. A separate Java 17+/Jackcess exporter produces new Access 2016 `.accdb` table-data files with primary keys, strict ISO Date/Time typing, and rejection of unsupported numeric/date/binary values. No in-place `.accdb` editing, metadata/object round-trip, Access query/form/report conversion, linked sources, Excel or ODBC. |
 | Compatibility inspection | Partial | Conversion report lists imported tables, row counts and known unsupported families. Cannot inventory every unsupported Access object from the file. |
 | Settings and accessibility | Partial | Access-inspired start screen with searchable recent local files; persisted theme/density/query limit and database table view, visible focus and reduced-motion support. No exact Windows Access UI, complete preference catalogue or audited VoiceOver support. |
 | Platform and distribution | Partial | macOS-only runtime and Apple Silicon DMG; signed where identity is available, not notarised. Linux is not supported yet. |
@@ -39,7 +39,7 @@ This is an implementation tracker, not a statement of parity with any Microsoft 
 | Format | Open/read | Modify in original format | Preserve Access objects |
 | --- | --- | --- | --- |
 | `.macrodb`, `.sqlite`, `.db` | Yes, as SQLite | Yes, save SQLite | Only this app's supported object metadata |
-| `.mdb`, `.accdb` | Table-data import through external mdbtools, if readable | **No in-place edit**; optional **new `.accdb` table-data export** requires Java 17+ | Exported files are actual Access 2016 files; table data and basic type mappings only. Access forms, reports, queries, macros, VBA, keys and constraints are not preserved |
+| `.mdb`, `.accdb` | Table-data import through external mdbtools, if readable | **No in-place edit**; optional **new `.accdb` table-data export** requires Java 17+ | Exported files are actual Access 2016 files; table data, readable primary keys and basic type mappings only. Access forms, reports, queries, macros, VBA, AutoNumber and other constraints are not preserved |
 | `.csv` | Table import | Export CSV | No |
 | `.accde`, `.mde`, `.accdr`, `.laccdb`, `.ldb`, `.xlsx` | No | No | No |
 

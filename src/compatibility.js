@@ -6,10 +6,10 @@ export function createImportReport(sourceName, tables, rows) {
     importedAt: new Date().toISOString(),
     tableCount: tables.length,
     recordCount: rows,
-    tables: tables.map(table => ({ source: table.source, target: table.target, columns: table.columns, records: table.records, fields: table.fields || [], warning: table.warning || null })),
-    preserved: ['Table names (except collisions)', 'Column names (except duplicate or empty headers)', 'Readable row values'],
-    converted: ['Integer and floating-point columns use SQLite affinities when mdb-schema exposes them', 'Currency, decimal, text and locale-dependent dates remain TEXT to avoid silent precision or date changes', 'Access field constraints, AutoNumber rules and field display formats are not recreated'],
-    unsupported: ['Access queries', 'Forms and reports', 'Macros and VBA modules', 'Relationships and indexes', 'Attachments and OLE semantics', 'Password-protected or unsupported databases', 'Saving or round-tripping .accdb/.mdb'],
+    tables: tables.map(table => ({ source: table.source, target: table.target, columns: table.columns, records: table.records, fields: table.fields || [], primaryKey: table.primaryKey || [], warning: table.warning || null })),
+    preserved: ['Table names (except collisions)', 'Column names (except duplicate or empty headers)', 'Readable row values', 'Readable primary keys when column names and values map without collisions; inspect each table below'],
+    converted: ['Integer and floating-point columns use SQLite affinities when mdb-schema exposes them', 'Currency, decimal, text and locale-dependent dates remain TEXT to avoid silent precision or date changes', 'Access AutoNumber rules, non-primary-key indexes, validation and field display formats are not recreated'],
+    unsupported: ['Access queries', 'Forms and reports', 'Macros and VBA modules', 'Relationships and indexes', 'Attachments and OLE semantics', 'Password-protected or unsupported databases', 'Editing existing .accdb/.mdb files in place or preserving Access object definitions'],
     warning: 'The original Access file is unchanged. Type mapping is best effort; compare critical records, nulls, dates and numeric precision with Access before relying on converted data.'
   };
 }

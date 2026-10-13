@@ -8,7 +8,7 @@ const base64 = value => {
 };
 
 export function accessExportPayload(tables) {
-  const lines = ['MDA-TABLES-1', String(tables.length)];
+  const lines = ['MDA-TABLES-2', String(tables.length)];
   for (const table of tables) {
     if (!table.columns?.length) throw new Error(`Table “${table.name}” has no fields.`);
     lines.push(base64(table.name), String(table.columns.length));
@@ -16,9 +16,12 @@ export function accessExportPayload(tables) {
       const affinity = String(column.type || '').toUpperCase();
       if (/BLOB/.test(affinity)) throw new Error(`Table “${table.name}” has a BLOB field. Attachments cannot be exported safely.`);
       const target = /^(INTEGER|INT|SMALLINT|TINYINT|BOOLEAN)$/.test(affinity) ? 'INTEGER'
-        : /^(REAL|FLOAT|DOUBLE)$/.test(affinity) ? 'REAL' : 'TEXT';
+        : /^(REAL|FLOAT|DOUBLE)$/.test(affinity) ? 'REAL'
+          : /^(DATE|DATETIME|TIMESTAMP)$/.test(affinity) ? 'DATETIME' : 'TEXT';
       lines.push(base64(column.name), target);
     }
+    const primaryKeys = table.columns.filter(column => Number(column.pk) > 0).sort((left, right) => Number(left.pk) - Number(right.pk));
+    lines.push(String(primaryKeys.length), ...primaryKeys.map(column => base64(column.name)));
     lines.push(String(table.rows.length));
     for (const row of table.rows) {
       for (const column of table.columns) {

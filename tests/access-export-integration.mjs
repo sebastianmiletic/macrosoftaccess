@@ -9,7 +9,7 @@ const work = fs.mkdtempSync(path.join(os.tmpdir(), 'macrosoft-export-test-'));
 try {
   const input = path.join(work, 'tables.txt');
   const output = path.join(work, 'test.accdb');
-  fs.writeFileSync(input, accessExportPayload([{ name: 'Contacts', columns: [{ name: 'ID', type: 'INTEGER' }, { name: 'Name', type: 'TEXT' }, { name: 'Balance', type: 'REAL' }], rows: [{ ID: 1, Name: 'Zoë\nSmith', Balance: 2.5 }, { ID: 2, Name: '', Balance: null }] }]));
+  fs.writeFileSync(input, accessExportPayload([{ name: 'Contacts', columns: [{ name: 'ID', type: 'INTEGER', pk: 1 }, { name: 'Name', type: 'TEXT' }, { name: 'Balance', type: 'REAL' }, { name: 'Created', type: 'DATETIME' }], rows: [{ ID: 1, Name: 'Zoë\nSmith', Balance: 2.5, Created: '2026-10-13 17:08:03' }, { ID: 2, Name: '', Balance: null, Created: null }] }]));
   const jar = path.join(process.cwd(), 'access-writer/target/access-writer.jar');
   const write = spawnSync('/usr/bin/java', ['-jar', jar, input, output], { encoding: 'utf8' });
   assert.equal(write.status, 0, write.stderr);
@@ -24,6 +24,8 @@ try {
   const schema = spawnSync('mdb-schema', ['-T', 'Contacts', output, 'sqlite'], { encoding: 'utf8' });
   assert.equal(schema.status, 0, schema.stderr);
   assert.match(schema.stdout, /REAL|DOUBLE|FLOAT/i);
+  assert.match(schema.stdout, /PRIMARY KEY/i);
+  assert.match(schema.stdout, /Created.*DateTime/i);
   const repeat = spawnSync('/usr/bin/java', ['-jar', jar, input, output], { encoding: 'utf8' });
   assert.notEqual(repeat.status, 0, 'A second export must refuse existing files');
   assert.equal(fs.existsSync(output), true);
@@ -33,5 +35,17 @@ try {
   const rejected = spawnSync('/usr/bin/java', ['-jar', jar, invalid, rejectedOutput], { encoding: 'utf8' });
   assert.notEqual(rejected.status, 0, 'Unsafe numeric values must fail the entire export');
   assert.equal(fs.existsSync(rejectedOutput), false, 'No partial Access file should survive');
-  console.log('PASS: real Access 2016 .accdb written, readable by mdbtools; existing file protected, unsafe data rejected');
+  const invalidDate = path.join(work, 'invalid-date.txt');
+  fs.writeFileSync(invalidDate, accessExportPayload([{ name: 'Dates', columns: [{ name: 'Date', type: 'DATETIME' }], rows: [{ Date: '13/10/2026' }] }]));
+  const invalidDateOutput = path.join(work, 'invalid-date.accdb');
+  const dateResult = spawnSync('/usr/bin/java', ['-jar', jar, invalidDate, invalidDateOutput], { encoding: 'utf8' });
+  assert.notEqual(dateResult.status, 0, 'Ambiguous date must not silently convert');
+  assert.equal(fs.existsSync(invalidDateOutput), false);
+  const duplicateInput = path.join(work, 'duplicate.txt');
+  fs.writeFileSync(duplicateInput, accessExportPayload([{ name: 'Duplicate', columns: [{ name: 'ID', type: 'INTEGER', pk: 1 }], rows: [{ ID: 1 }, { ID: 1 }] }]));
+  const duplicateOutput = path.join(work, 'duplicate.accdb');
+  const duplicate = spawnSync('/usr/bin/java', ['-jar', jar, duplicateInput, duplicateOutput], { encoding: 'utf8' });
+  assert.notEqual(duplicate.status, 0, 'Key collisions must abort export');
+  assert.equal(fs.existsSync(duplicateOutput), false, 'No partial export on key collision');
+  console.log('PASS: Access 2016 .accdb with keys, rows and ISO dates readable by mdbtools; unsafe exports rejected');
 } finally { fs.rmSync(work, { recursive: true, force: true }); }

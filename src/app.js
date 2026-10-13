@@ -4,7 +4,7 @@ import logoUrl from '../assets/logo-transparent.png';
 import { migrateMetadata, METADATA_VERSION } from './metadata.js';
 import { createImportReport, uniqueHeaders } from './compatibility.js';
 import { defaultFormSettings, normalizeFormSettings, FORM_CONTROL_TYPES } from './form-model.js';
-import { fieldMapping } from './access-schema.js';
+import { fieldMapping, parseAccessPrimaryKey } from './access-schema.js';
 import { translateAccessSql, registerAccessFunctions } from './access-sql.js';
 import { normalizeReportSettings } from './report-model.js';
 import { accessExportPayload } from './access-export.js';
@@ -292,19 +292,54 @@ async function importAccessDatabase(file) {
       if (!data.length || !data[0].length) throw new Error(`Table “${table.name}” has no readable column headers.`);
       const headers = uniqueHeaders(data[0]);
       const fields = fieldMapping(headers, table.schema);
+      const sourceKeys = parseAccessPrimaryKey(table.schema);
+      const normalizedKeys = sourceKeys.map(key => {
+        const matches = data[0].map((header, index) => header.toLowerCase() === key.toLowerCase() ? headers[index] : null).filter(Boolean);
+        return matches.length === 1 ? matches[0] : null;
+      });
+      let keys = sourceKeys.length && normalizedKeys.every(Boolean) ? normalizedKeys : [];
+      let keyWarning = sourceKeys.length && !keys.length ? 'Source primary key could not be mapped uniquely and was not imported.' : null;
+      if (keys.length) {
+        const indexes = keys.map(key => headers.indexOf(key));
+        const values = new Set();
+        for (const row of data.slice(1)) {
+          const tuple = indexes.map(index => row[index] ?? null);
+          const signature = JSON.stringify(tuple);
+          if (tuple.some(value => value === null || value === '') || values.has(signature)) {
+            keys = [];
+            keyWarning = 'Source primary key has blank or duplicate exported values; imported as plain columns.';
+            break;
+          }
+          values.add(signature);
+        }
+      }
       const base = String(table.name).replace(/[^\p{L}\p{N}_ ]/gu, '_') || 'ImportedTable';
       let safeName = base;
       let suffix = 2;
       while (used.has(safeName.toLocaleLowerCase()) || safeName.startsWith('_mda_')) safeName = `${base}_${suffix++}`;
       used.add(safeName.toLocaleLowerCase());
-      incoming.run(`CREATE TABLE ${quoteId(safeName)} (${fields.map(field => `${quoteId(field.name)} ${field.targetType}`).join(', ')})`);
       const records = Math.max(0, data.length - 1);
-      if (records) {
-        const insert = incoming.prepare(`INSERT INTO ${quoteId(safeName)} VALUES (${headers.map(() => '?').join(',')})`);
-        try { for (const row of data.slice(1)) { insert.run(headers.map((_, i) => row[i] ?? null)); count++; } }
-        finally { insert.free(); }
+      const createAndFill = () => {
+        const keySql = keys.length ? `, PRIMARY KEY (${keys.map(quoteId).join(', ')})` : '';
+        incoming.run(`CREATE TABLE ${quoteId(safeName)} (${fields.map(field => `${quoteId(field.name)} ${field.targetType}${keys.includes(field.name) ? ' NOT NULL' : ''}`).join(', ')}${keySql})`);
+        if (records) {
+          const insert = incoming.prepare(`INSERT INTO ${quoteId(safeName)} VALUES (${headers.map(() => '?').join(',')})`);
+          try { for (const row of data.slice(1)) insert.run(headers.map((_, i) => row[i] ?? null)); }
+          finally { insert.free(); }
+        }
+      };
+      incoming.run('SAVEPOINT import_table');
+      try { createAndFill(); incoming.run('RELEASE import_table'); }
+      catch (error) {
+        incoming.run('ROLLBACK TO import_table');
+        incoming.run('RELEASE import_table');
+        if (!keys.length || !/constraint/i.test(error.message)) throw error;
+        keys = [];
+        keyWarning = `Source primary key could not be recreated in SQLite (${error.message}); table values were imported without a key.`;
+        createAndFill();
       }
-      details.push({ source: table.name, target: safeName, columns: headers.length, records, fields, warning: table.schemaWarning });
+      count += records;
+      details.push({ source: table.name, target: safeName, columns: headers.length, records, fields, primaryKey: keys, warning: [table.schemaWarning, keyWarning].filter(Boolean).join(' ') || null });
     }
     const report = createImportReport(file.name, details, count);
     incoming.run("INSERT INTO _mda_meta(key,value) VALUES('import_report',?)", [JSON.stringify(report)]);
@@ -1097,7 +1132,7 @@ function showCompatibilityReport() {
     return;
   }
   const list = (items) => `<ul class="compat-list">${items.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
-  $('#documentSurface').innerHTML = `<article class="database-dashboard compatibility-report"><h1>Import compatibility report</h1><p>Source: <strong>${escapeHtml(report.sourceName)}</strong> · ${escapeHtml(new Date(report.importedAt).toLocaleString())}</p><div class="summary-strip"><div class="summary-item"><strong>${Number(report.tableCount) || 0}</strong><span>Tables converted</span></div><div class="summary-item"><strong>${Number(report.recordCount) || 0}</strong><span>Rows imported</span></div></div><section class="compat-warning" role="status">${escapeHtml(report.warning)}</section><h2>Imported tables</h2><table class="schema-grid"><thead><tr><th>Source</th><th>Local table</th><th>Columns</th><th>Rows</th></tr></thead><tbody>${(report.tables || []).map(table => `<tr><td>${escapeHtml(table.source)}</td><td>${escapeHtml(table.target)}</td><td>${Number(table.columns) || 0}</td><td>${Number(table.records) || 0}</td></tr>`).join('')}</tbody></table>${(report.tables || []).map(table => `<details class="compat-fields"><summary>${escapeHtml(table.target)}: field mappings</summary>${table.warning ? `<p>${escapeHtml(table.warning)}</p>` : ''}<ul>${(table.fields || []).map(field => `<li>${escapeHtml(field.name)}: ${escapeHtml(field.sourceType || 'Unknown')} → ${escapeHtml(field.targetType || 'TEXT')}</li>`).join('')}</ul></details>`).join('')}<h2>Preserved</h2>${list(report.preserved || [])}<h2>Converted</h2>${list(report.converted || [])}<h2>Not imported</h2>${list(report.unsupported || [])}<p class="compat-note">Project metadata version: ${METADATA_VERSION}. The Access source file was not modified.</p></article>`;
+  $('#documentSurface').innerHTML = `<article class="database-dashboard compatibility-report"><h1>Import compatibility report</h1><p>Source: <strong>${escapeHtml(report.sourceName)}</strong> · ${escapeHtml(new Date(report.importedAt).toLocaleString())}</p><div class="summary-strip"><div class="summary-item"><strong>${Number(report.tableCount) || 0}</strong><span>Tables converted</span></div><div class="summary-item"><strong>${Number(report.recordCount) || 0}</strong><span>Rows imported</span></div></div><section class="compat-warning" role="status">${escapeHtml(report.warning)}</section><h2>Imported tables</h2><table class="schema-grid"><thead><tr><th>Source</th><th>Local table</th><th>Columns</th><th>Rows</th></tr></thead><tbody>${(report.tables || []).map(table => `<tr><td>${escapeHtml(table.source)}</td><td>${escapeHtml(table.target)}</td><td>${Number(table.columns) || 0}</td><td>${Number(table.records) || 0}</td></tr>`).join('')}</tbody></table>${(report.tables || []).map(table => `<details class="compat-fields"><summary>${escapeHtml(table.target)}: field mappings</summary>${table.warning ? `<p>${escapeHtml(table.warning)}</p>` : ''}${table.primaryKey?.length ? `<p>Local primary key: ${escapeHtml(table.primaryKey.join(', '))}</p>` : ''}<ul>${(table.fields || []).map(field => `<li>${escapeHtml(field.name)}: ${escapeHtml(field.sourceType || 'Unknown')} → ${escapeHtml(field.targetType || 'TEXT')}</li>`).join('')}</ul></details>`).join('')}<h2>Preserved</h2>${list(report.preserved || [])}<h2>Converted</h2>${list(report.converted || [])}<h2>Not imported</h2>${list(report.unsupported || [])}<p class="compat-note">Project metadata version: ${METADATA_VERSION}. The Access source file was not modified.</p></article>`;
   setStatus('Import compatibility report', `${report.tableCount} tables · ${report.recordCount} records`);
 }
 

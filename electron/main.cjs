@@ -247,7 +247,7 @@ ipcMain.handle('file:export-csv', async (_event, { name, csv }) => {
 });
 
 ipcMain.handle('file:export-access', async (_event, { name, payload }) => {
-  if (typeof payload !== 'string' || !payload.startsWith('MDA-TABLES-1\n') || Buffer.byteLength(payload) > 40 * 1024 * 1024) {
+  if (typeof payload !== 'string' || !/^MDA-TABLES-[12]\n/.test(payload) || Buffer.byteLength(payload) > 40 * 1024 * 1024) {
     throw new Error('Invalid or oversized Access export. Use CSV for very large tables.');
   }
   const result = await dialog.showSaveDialog(mainWindow, {

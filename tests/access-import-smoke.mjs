@@ -36,6 +36,7 @@ try {
   assert(report.includes(isMdb ? 'DateTest' : 'Asset Items'));
   assert(report.includes(isMdb ? 'IDCol: INTEGER → INTEGER' : 'Cost: REAL → REAL'));
   assert(report.includes(isMdb ? 'DateTimeCol: DateTime → TEXT' : 'Warranty: INTEGER → INTEGER'));
+  if (!isMdb) assert(report.includes('Local primary key: Asset No'));
   const sql = isMdb ? 'SELECT typeof(IDCol), typeof(DateTimeCol) FROM DateTest LIMIT 1' : 'SELECT typeof(Cost), typeof(Warranty) FROM "Asset Items" LIMIT 1';
   await evaluate(`(() => { document.querySelector('[data-action=sql-query]').click(); document.querySelector('#sqlEditor').value=${JSON.stringify(sql)}; document.querySelector('[data-action=run-query]').click(); })()`);
   assert.equal(await evaluate('document.querySelector("#queryResults tbody td:nth-child(2)")?.textContent'), isMdb ? 'integer' : 'real');

@@ -4,7 +4,11 @@ import com.healthmarketscience.jackcess.*;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.time.*;
+import java.time.format.DateTimeParseException;
 import java.util.Base64;
+import java.util.Date;
+import java.util.TimeZone;
 
 /** Creates a new Access 2016 file containing supported local table data only. */
 public final class AccessWriter {
@@ -29,6 +33,7 @@ public final class AccessWriter {
       case "INTEGER": return DataType.LONG;
       case "REAL": return DataType.DOUBLE;
       case "TEXT": return DataType.MEMO;
+      case "DATETIME": return DataType.SHORT_DATE_TIME;
       default: throw new IOException("Unsupported SQLite type for Access export: " + affinity);
     }
   }
@@ -44,9 +49,16 @@ public final class AccessWriter {
         if (!Double.isFinite(number)) throw new NumberFormatException("non-finite number");
         return number;
       }
+      if (type == DataType.SHORT_DATE_TIME) {
+        LocalDateTime local;
+        if (value.matches("\\d{4}-\\d{2}-\\d{2}")) local = LocalDate.parse(value).atStartOfDay();
+        else if (value.matches("\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}(:\\d{2})?")) local = LocalDateTime.parse(value.replace(' ', 'T'));
+        else throw new IOException("Date requires ISO YYYY-MM-DD or YYYY-MM-DD HH:MM[:SS]: " + value);
+        return Date.from(local.toInstant(ZoneOffset.UTC));
+      }
       return value;
-    } catch (NumberFormatException error) {
-      throw new IOException("A numeric value cannot be represented in Access without loss: " + value, error);
+    } catch (NumberFormatException | DateTimeParseException error) {
+      throw new IOException("A value cannot be represented in Access without loss: " + value, error);
     }
   }
 
@@ -55,8 +67,10 @@ public final class AccessWriter {
     Path destination = Path.of(args[1]);
     if (Files.exists(destination)) throw new IOException("Destination already exists");
     try (BufferedReader reader = Files.newBufferedReader(Path.of(args[0]), StandardCharsets.UTF_8)) {
-      if (!read(reader).equals("MDA-TABLES-1")) throw new IOException("Unsupported export payload version");
-      try (Database database = DatabaseBuilder.create(Database.FileFormat.V2016, destination.toFile())) {
+      String version = read(reader);
+      if (!version.equals("MDA-TABLES-1") && !version.equals("MDA-TABLES-2")) throw new IOException("Unsupported export payload version");
+      try (Database database = DatabaseBuilder.newDatabase(destination.toFile())
+          .setFileFormat(Database.FileFormat.V2016).setTimeZone(TimeZone.getTimeZone("UTC")).create()) {
         int tableCount = count(reader);
         for (int t = 0; t < tableCount; t++) {
           String name = decode(read(reader));
@@ -68,6 +82,13 @@ public final class AccessWriter {
             String column = decode(read(reader));
             types[c] = fieldType(read(reader));
             builder.addColumn(new ColumnBuilder(column, types[c]));
+          }
+          if (version.equals("MDA-TABLES-2")) {
+            int keyCount = count(reader);
+            if (keyCount > columnCount) throw new IOException("Primary key contains too many fields: " + name);
+            String[] keys = new String[keyCount];
+            for (int key = 0; key < keyCount; key++) keys[key] = decode(read(reader));
+            if (keyCount > 0) builder.setPrimaryKey(keys);
           }
           Table table = builder.toTable(database);
           int rowCount = count(reader);
