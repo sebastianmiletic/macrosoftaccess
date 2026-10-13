@@ -44,9 +44,9 @@ try {
   await evaluate('document.querySelector("[data-action=new-record]").click()');
   await evaluate(`(() => { const input = document.querySelector('.datasheet tbody tr.new-row input[data-column=name]'); input.value = 'Alex Smith'; input.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   assert.equal(await evaluate('document.querySelector(".datasheet tbody tr:not(.new-row) input[data-column=name]")?.value'), 'Alex Smith');
-  await evaluate('document.querySelector("[data-action=view]").click()');
+  await evaluate(`(() => { document.querySelector('[data-view-menu]:not([disabled])').click(); document.querySelector('[data-menu-view=design]').click(); })()`);
   assert.equal(await evaluate('document.querySelector(".design-view") !== null'), true);
-  await evaluate('document.querySelector("[data-action=view]").click()');
+  await evaluate(`(() => { document.querySelector('[data-view-menu]:not([disabled])').click(); document.querySelector('[data-menu-view=datasheet]').click(); })()`);
   assert.equal(await evaluate('document.querySelector(".datasheet") !== null'), true);
   await evaluate('document.querySelector("[data-action=sql-query]").click()');
   await evaluate(`(() => { document.querySelector('#sqlEditor').value = 'SELECT name FROM Customers'; document.querySelector('[data-action=run-query]').click(); })()`);

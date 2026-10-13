@@ -338,6 +338,11 @@
   .settings-group select { width: 170px; height: 28px; padding: 2px 5px; }
   .settings-group .check-setting { justify-content: flex-start; }
   .settings-group p { color: var(--muted); }
+  .workspace-menu { position: fixed; z-index: 35; width: 215px; max-height: min(350px, calc(100vh - 12px)); overflow-y: auto; padding: 4px; background: var(--surface); border: 1px solid var(--line-strong); box-shadow: var(--shadow); border-radius: 2px; }
+  .workspace-menu-caption { padding: 5px 9px; color: var(--muted); font-size: 11px; font-weight: 650; }
+  .workspace-menu button { width: 100%; min-height: 30px; display: flex; align-items: center; gap: 8px; padding: 3px 8px; text-align: left; font-size: 12px; }
+  .workspace-menu button span { width: 14px; text-align: center; color: var(--accent); }
+  .workspace-menu button:hover, .workspace-menu button:focus-visible { background: var(--selected); }
   .context-menu { position: fixed; z-index: 30; width: 180px; padding: 4px; background: var(--surface); border: 1px solid var(--line-strong); box-shadow: var(--shadow); border-radius: 4px; animation: page-reveal 140ms cubic-bezier(.22, 1, .36, 1) both; }
   .context-menu button { width: 100%; text-align: left; padding: 7px 10px; border-radius: 2px; }
   .context-menu button:hover, .context-menu button:focus { background: var(--selected); }
@@ -389,7 +394,7 @@
   }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }
   @media print {
-    .titlebar, .ribbon-tabs, .ribbon, .navigation-pane, .nav-resize, .document-tabs, .statusbar, .local-toolbar, .backstage, .context-menu, .toast-region { display: none !important; }
+    .titlebar, .ribbon-tabs, .ribbon, .navigation-pane, .nav-resize, .document-tabs, .statusbar, .local-toolbar, .backstage, .context-menu, .workspace-menu, .toast-region { display: none !important; }
     .app-shell, .workspace, .document-area { display: block; height: auto; }
     .document-surface { overflow: visible; }
     .report-view { width: 100%; min-height: 0; margin: 0; padding: 20px; box-shadow: none; }

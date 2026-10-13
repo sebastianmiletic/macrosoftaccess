@@ -550,8 +550,8 @@ function renderViewControls() {
   if (!views.length) status.textContent = 'No document view';
   else if (views.length === 1) status.textContent = views[0][1];
   else status.innerHTML = `<label for="activeViewSelect">View</label> <select id="activeViewSelect" aria-label="Document view">${views.map(([value, label]) => `<option value="${value}" ${tab.view === value || !tab.view && value === views[0][0] ? 'selected' : ''}>${label}</option>`).join('')}</select>`;
-  $('#homeViewLabel').textContent = views.length > 1 ? views.find(([value]) => value === (tab.view || views[0][0]))?.[1].replace(' View', '') || 'View' : 'View';
-  $('[data-action="view"]').disabled = views.length < 2;
+  $('#homeViewLabel').textContent = views.length > 1 ? `${views.find(([value]) => value === (tab.view || views[0][0]))?.[1].replace(' View', '') || 'View'} ▾` : 'View ▾';
+  $$('[data-view-menu]').forEach(button => { button.disabled = views.length < 2; });
 }
 
 function setActiveView(view) {
@@ -571,6 +571,54 @@ function switchView() {
   setActiveView(views[next][0]);
 }
 
+let workspaceMenuTrigger = null;
+function closeWorkspaceMenu(restoreFocus = false) {
+  const menu = $('#workspaceMenu');
+  menu.classList.add('hidden');
+  workspaceMenuTrigger?.setAttribute('aria-expanded', 'false');
+  if (restoreFocus && workspaceMenuTrigger?.isConnected) workspaceMenuTrigger.focus();
+  workspaceMenuTrigger = null;
+}
+
+function showWorkspaceMenu(trigger, kind) {
+  const menu = $('#workspaceMenu');
+  if (!menu.classList.contains('hidden') && workspaceMenuTrigger === trigger) { closeWorkspaceMenu(true); return; }
+  closeWorkspaceMenu();
+  if (kind === 'view') {
+    const tab = state.tabs.find(item => item.id === state.activeTab);
+    const views = availableViews(tab);
+    if (views.length < 2) return;
+    menu.setAttribute('aria-label', 'Document views');
+    menu.innerHTML = `<div class="workspace-menu-caption">View</div>${views.map(([value, label]) => `<button type="button" role="menuitem" data-menu-view="${escapeHtml(value)}"><span>${value === (tab.view || views[0][0]) ? '✓' : ''}</span>${escapeHtml(label)}</button>`).join('')}`;
+  } else {
+    if (!$('.datasheet')) return;
+    menu.setAttribute('aria-label', 'Add field');
+    menu.innerHTML = `<div class="workspace-menu-caption">Add a field</div>${[['TEXT', 'Short Text'], ['INTEGER', 'Number (integer)'], ['REAL', 'Number (decimal)'], ['DATE', 'Date & Time (text)'], ['BOOLEAN', 'Yes/No (0 or 1)']].map(([type, label]) => `<button type="button" role="menuitem" data-menu-field="${type}"><span>＋</span>${label}</button>`).join('')}<button type="button" role="menuitem" data-menu-design><span>⚒</span>More fields in Design View</button>`;
+  }
+  const rect = trigger.getBoundingClientRect();
+  menu.classList.remove('hidden');
+  menu.style.left = `${Math.max(4, Math.min(rect.left, window.innerWidth - menu.offsetWidth - 4))}px`;
+  menu.style.top = `${rect.bottom + menu.offsetHeight + 4 > window.innerHeight ? Math.max(4, rect.top - menu.offsetHeight) : rect.bottom + 2}px`;
+  workspaceMenuTrigger = trigger;
+  trigger.setAttribute('aria-expanded', 'true');
+  menu.querySelector('[role="menuitem"]')?.focus();
+}
+
+$('#workspaceMenu').addEventListener('keydown', event => {
+  const items = $$('[role="menuitem"]', $('#workspaceMenu'));
+  const index = items.indexOf(document.activeElement);
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault();
+    items[(index + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length]?.focus();
+  } else if (event.key === 'Home' || event.key === 'End') {
+    event.preventDefault();
+    items[event.key === 'Home' ? 0 : items.length - 1]?.focus();
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
+    closeWorkspaceMenu(true);
+  }
+});
+
 function renderTableDesign(table) {
   const columns = getColumns(table);
   const indexes = rowsFromExec(`PRAGMA index_list(${quoteId(table)})`);
@@ -587,7 +635,7 @@ function addField() {
 
 function quickAddField(type) {
   const tab = state.tabs.find(item => item.id === state.activeTab);
-  if (tab?.type !== 'table' || !['TEXT', 'INTEGER', 'DATE', 'BOOLEAN'].includes(type)) return;
+  if (tab?.type !== 'table' || !['TEXT', 'INTEGER', 'REAL', 'DATE', 'BOOLEAN'].includes(type)) return;
   const columns = getColumns(tab.name);
   let number = 1;
   while (columns.some(column => column.name.toLowerCase() === `field${number}`)) number++;
@@ -638,7 +686,7 @@ function renderDatasheet(table) {
     const order = sortField ? ` ORDER BY ${quoteId(sortField)} ${state.sort.ascending ? 'ASC' : 'DESC'}` : '';
     const rows = rowsFromExec(`SELECT rowid AS __rowid__, * FROM ${quoteId(table)}${where}${order} LIMIT ${Number(state.settings.rows) || 1000}`, params);
     state.lastResults = { name: table, columns: columns.map(c => c.name), rows };
-    $('#documentSurface').innerHTML = `<div class="datasheet-shell"><div class="datasheet-wrap"><table class="datasheet" data-table="${escapeHtml(table)}"><thead><tr><th class="row-selector"></th>${columns.map(c => `<th title="${escapeHtml(c.type || 'ANY')}">${escapeHtml(c.name)}${c.pk ? ' 🔑' : ''}</th>`).join('')}<th><button class="datasheet-add-field" data-action="add-field" title="Open Table Design to add a field">Click to Add ▾</button></th></tr></thead><tbody>${rows.map((row, index) => `<tr data-rowid="${escapeHtml(row.__rowid__)}"><td class="row-selector">${index + 1}</td>${columns.map(c => `<td><input class="cell-input" data-column="${escapeHtml(c.name)}" value="${escapeHtml(row[c.name])}" aria-label="${escapeHtml(c.name)}, row ${index + 1}"></td>`).join('')}<td></td></tr>`).join('')}<tr class="new-row" data-new-row><td class="row-selector">＊</td>${columns.map(c => `<td><input class="cell-input" data-column="${escapeHtml(c.name)}" placeholder="${c.pk ? '(AutoNumber)' : '(New)'}" aria-label="New ${escapeHtml(c.name)}"></td>`).join('')}<td></td></tr></tbody></table></div><nav class="datasheet-nav" aria-label="Datasheet record navigation"><span>Record:</span><button data-record-nav="first" aria-label="First record" title="First record">|‹</button><button data-record-nav="previous" aria-label="Previous record" title="Previous record">‹</button><span class="datasheet-position" aria-live="polite"></span><button data-record-nav="next" aria-label="Next record" title="Next record">›</button><button data-record-nav="last" aria-label="Last record" title="Last record">›|</button><button data-record-nav="new" aria-label="New record" title="New record">＊</button><span class="datasheet-filter-label">${state.filter?.table === table ? `Filtered by ${escapeHtml(state.filter.field)}` : 'No filter'}</span>${state.filter?.table === table ? '<button data-action="clear-filter" title="Clear filter">× Clear</button>' : ''}<label class="datasheet-find">⌕ <input id="datasheetSearch" type="search" aria-label="Find in visible records" placeholder="Search"></label></nav></div>`;
+    $('#documentSurface').innerHTML = `<div class="datasheet-shell"><div class="datasheet-wrap"><table class="datasheet" data-table="${escapeHtml(table)}"><thead><tr><th class="row-selector"></th>${columns.map(c => `<th title="${escapeHtml(c.type || 'ANY')}">${escapeHtml(c.name)}${c.pk ? ' 🔑' : ''}</th>`).join('')}<th><button class="datasheet-add-field" data-field-menu aria-haspopup="menu" aria-expanded="false" title="Choose a field type">Click to Add ▾</button></th></tr></thead><tbody>${rows.map((row, index) => `<tr data-rowid="${escapeHtml(row.__rowid__)}"><td class="row-selector">${index + 1}</td>${columns.map(c => `<td><input class="cell-input" data-column="${escapeHtml(c.name)}" value="${escapeHtml(row[c.name])}" aria-label="${escapeHtml(c.name)}, row ${index + 1}"></td>`).join('')}<td></td></tr>`).join('')}<tr class="new-row" data-new-row><td class="row-selector">＊</td>${columns.map(c => `<td><input class="cell-input" data-column="${escapeHtml(c.name)}" placeholder="${c.pk ? '(AutoNumber)' : '(New)'}" aria-label="New ${escapeHtml(c.name)}"></td>`).join('')}<td></td></tr></tbody></table></div><nav class="datasheet-nav" aria-label="Datasheet record navigation"><span>Record:</span><button data-record-nav="first" aria-label="First record" title="First record">|‹</button><button data-record-nav="previous" aria-label="Previous record" title="Previous record">‹</button><span class="datasheet-position" aria-live="polite"></span><button data-record-nav="next" aria-label="Next record" title="Next record">›</button><button data-record-nav="last" aria-label="Last record" title="Last record">›|</button><button data-record-nav="new" aria-label="New record" title="New record">＊</button><span class="datasheet-filter-label">${state.filter?.table === table ? `Filtered by ${escapeHtml(state.filter.field)}` : 'No filter'}</span>${state.filter?.table === table ? '<button data-action="clear-filter" title="Clear filter">× Clear</button>' : ''}<label class="datasheet-find">⌕ <input id="datasheetSearch" type="search" aria-label="Find in visible records" placeholder="Search"></label></nav></div>`;
     const previousRow = state.rowSelection?.table === table ? state.rowSelection.rowid : null;
     const selectedIndex = previousRow == null ? 0 : rows.findIndex(row => String(row.__rowid__) === String(previousRow));
     selectDatasheetRow(selectedIndex < 0 ? 0 : selectedIndex, false);
@@ -1372,6 +1420,21 @@ function sortDatasheet(ascending) {
 
 // Ribbon and delegated workspace interactions
 document.addEventListener('click', event => {
+  const menuView = event.target.closest('[data-menu-view]');
+  const menuField = event.target.closest('[data-menu-field]');
+  const menuDesign = event.target.closest('[data-menu-design]');
+  if (menuView || menuField || menuDesign) {
+    const view = menuView?.dataset.menuView;
+    const field = menuField?.dataset.menuField;
+    closeWorkspaceMenu();
+    if (view) setActiveView(view);
+    else if (field) quickAddField(field);
+    else addField();
+    return;
+  }
+  const menuTrigger = event.target.closest('[data-view-menu], [data-field-menu]');
+  if (menuTrigger) { showWorkspaceMenu(menuTrigger, menuTrigger.hasAttribute('data-view-menu') ? 'view' : 'field'); return; }
+  if (!event.target.closest('#workspaceMenu')) closeWorkspaceMenu();
   const ribbonTab = event.target.closest('[data-tab]');
   if (ribbonTab) {
     if (ribbonTab.dataset.tab === 'file') showBackstage(state.db ? 'info' : 'home');
@@ -1591,7 +1654,7 @@ document.addEventListener('keydown', event => {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); openCommandPalette(); }
   if ((event.metaKey || event.ctrlKey) && event.key === ',') { event.preventDefault(); showBackstage('options'); }
   if ((event.metaKey || event.ctrlKey) && event.key === 'Enter' && $('#sqlEditor')) { event.preventDefault(); runQuery(); }
-  if (event.key === 'Escape') { closeBackstage(); $('#contextMenu').classList.add('hidden'); }
+  if (event.key === 'Escape') { closeWorkspaceMenu(true); closeBackstage(); $('#contextMenu').classList.add('hidden'); }
 });
 
 window.desktop.onCommand(command => performAction(command));

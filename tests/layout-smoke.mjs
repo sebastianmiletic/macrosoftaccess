@@ -28,7 +28,7 @@ async function evaluate(expression) {
   return result.result?.value;
 }
 try {
-  assert.equal(await evaluate('document.querySelector(".file-home") !== null'), true);
+  assert.equal(await evaluate('new Promise((resolve, reject) => { const start=Date.now(); const poll=() => { if (document.querySelector(".file-home")) return resolve(true); if (Date.now()-start>10000) return reject(new Error("Home did not appear")); setTimeout(poll, 50); }; poll(); })'), true);
   await evaluate('document.querySelector(".home-templates [data-action=new]").click()');
   await evaluate(`(() => { document.querySelector('#tableName').value='Customers'; document.querySelector('#tableFields').value='ID INTEGER PRIMARY KEY AUTOINCREMENT\\nName TEXT'; document.querySelector('#confirmTable').click(); })()`);
   assert.equal(await evaluate('document.querySelector("[data-tab=table-fields]").classList.contains("active")'), true);
@@ -51,6 +51,28 @@ try {
   assert.equal(await evaluate('document.querySelector(".datasheet-position")?.textContent'), '2 of 2');
   assert.equal(await evaluate('document.querySelector(".datasheet tr.selected [data-column=Name]")?.value'), 'Ada');
   await evaluate('document.querySelector("[data-tab=table-fields]").click()');
+  await evaluate('document.querySelector("[data-field-menu]").click()');
+  assert.equal(await evaluate('document.querySelector("#workspaceMenu").getAttribute("aria-label")'), 'Add field');
+  assert.equal(await evaluate('document.querySelector("[data-field-menu]").getAttribute("aria-expanded")'), 'true');
+  await evaluate('document.querySelector("[data-menu-field=REAL]").click()');
+  assert.equal(await evaluate('document.querySelector(".datasheet thead")?.textContent.includes("Field1")'), true);
+  assert.equal(await evaluate('document.querySelector("#workspaceMenu").classList.contains("hidden")'), true);
+  await evaluate('document.querySelector("[data-view-menu]:not([disabled])").click()');
+  assert.equal(await evaluate('document.querySelectorAll("#workspaceMenu [data-menu-view]").length'), 2);
+  await evaluate('document.querySelector("[data-menu-view=design]").click()');
+  assert.equal(await evaluate('document.querySelector(".design-view") !== null'), true);
+  await evaluate('document.querySelector("[data-view-menu]:not([disabled])").click()');
+  await evaluate('document.querySelector("[data-menu-view=datasheet]").click()');
+  assert.equal(await evaluate('document.querySelector(".datasheet") !== null'), true);
+  await evaluate('document.querySelector("[data-field-menu]").click()');
+  await evaluate('document.querySelector("#workspaceMenu").dispatchEvent(new KeyboardEvent("keydown",{key:"ArrowDown",bubbles:true}))');
+  assert.equal(await evaluate('document.activeElement?.dataset.menuField'), 'INTEGER');
+  await evaluate('document.querySelector("#workspaceMenu").dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}))');
+  assert.equal(await evaluate('document.querySelector("#workspaceMenu").classList.contains("hidden")'), true);
+  assert.equal(await evaluate('document.activeElement?.hasAttribute("data-field-menu")'), true);
+  await evaluate('document.querySelector("[data-field-menu]").click()');
+  await evaluate('document.querySelector("#objectSearch").click()');
+  assert.equal(await evaluate('document.querySelector("#workspaceMenu").classList.contains("hidden")'), true);
   const initial = await evaluate('document.querySelector("#navigationPane").getBoundingClientRect().width');
   const width = await evaluate('innerWidth');
   assert(initial / width < 0.14, `Navigation uses too much of the window: ${initial}/${width}`);
@@ -81,6 +103,10 @@ try {
   await call('Emulation.setDeviceMetricsOverride', { width: 980, height: 650, deviceScaleFactor: 1, mobile: false });
   await new Promise(resolve => setTimeout(resolve, 250));
   assert.equal(await evaluate('document.documentElement.scrollWidth <= innerWidth'), true);
+  await evaluate('document.querySelector("[data-field-menu]").click()');
+  assert.equal(await evaluate('document.querySelector("#workspaceMenu").getBoundingClientRect().right <= innerWidth'), true);
+  assert.equal(await evaluate('document.querySelector("#workspaceMenu").getBoundingClientRect().bottom <= innerHeight'), true);
+  await evaluate('document.querySelector("#workspaceMenu").dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}))');
   assert.equal(await evaluate('document.querySelector("#contextRibbonLabel").getBoundingClientRect().right <= document.querySelector(".document-title").getBoundingClientRect().left'), true);
   assert.equal(await evaluate('document.querySelector(".document-area").getBoundingClientRect().width > 500'), true);
   if (process.env.LAYOUT_SCREENSHOT_COMPACT) {

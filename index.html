@@ -38,7 +38,7 @@
     <section id="ribbon" class="ribbon" aria-label="Command ribbon">
       <div class="ribbon-page active" data-page="home">
         <div class="command-group">
-          <button class="command large" data-action="view" title="Switch to the next available view"><span class="command-icon">▦</span><span id="homeViewLabel">View</span></button>
+          <button class="command large" data-view-menu aria-haspopup="menu" aria-expanded="false" title="Choose document view"><span class="command-icon">▦</span><span id="homeViewLabel">View ▾</span></button>
           <div class="command-stack">
             <button class="command" data-action="save"><span>▣</span> Save</button>
             <button class="command" data-action="refresh"><span>↻</span> Refresh</button>
@@ -104,7 +104,7 @@
         <div class="command-group"><button class="command large" data-action="compatibility-report"><span class="command-icon">◎</span><span>Compatibility</span></button><button class="command large" data-action="options"><span class="command-icon">⚙</span><span>Options</span></button><span class="group-label">Information</span></div>
       </div>
       <div class="ribbon-page" data-page="table-fields">
-        <div class="command-group"><button class="command large" data-action="view"><span class="command-icon">▦</span><span>View</span></button><span class="group-label">Views</span></div>
+        <div class="command-group"><button class="command large" data-view-menu aria-haspopup="menu" aria-expanded="false" title="Choose document view"><span class="command-icon">▦</span><span>View ▾</span></button><span class="group-label">Views</span></div>
         <div class="command-group"><button class="command large" data-quick-field="TEXT" title="Add a local SQLite text field"><span class="command-icon">AB</span><span>Short Text</span></button><button class="command large" data-quick-field="INTEGER" title="Add an integer field"><span class="command-icon">12</span><span>Number</span></button><button class="command large" data-quick-field="DATE" title="Add a date text field"><span class="command-icon">▦</span><span>Date & Time</span></button><button class="command large" data-quick-field="BOOLEAN" title="Add a 0/1 field"><span class="command-icon">☑</span><span>Yes/No</span></button><button class="command large" data-action="add-field"><span class="command-icon">＋</span><span>More Fields</span></button><span class="group-label">Add fields</span></div>
         <div class="command-group"><button class="command large" data-action="create-index"><span class="command-icon">◆</span><span>Index</span></button><button class="command large" data-action="design-view"><span class="command-icon">⚒</span><span>Design</span></button><span class="group-label">Properties</span></div>
       </div>
@@ -159,6 +159,7 @@
   </div>
 
   <div id="contextMenu" class="context-menu hidden" role="menu"></div>
+  <div id="workspaceMenu" class="workspace-menu hidden" role="menu" aria-label="Workspace options"></div>
 
   <dialog id="tableDialog" class="app-dialog">
     <form method="dialog" id="tableForm"><header><h2>Create table</h2><button value="cancel" aria-label="Close">×</button></header>
