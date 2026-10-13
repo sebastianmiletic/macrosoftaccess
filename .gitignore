@@ -1,6 +1,7 @@
 node_modules/
 renderer-dist/
 release/
+access-writer/target/
 dist/
 *.macrodb
 *.sqlite

@@ -1,0 +1,37 @@
+// npm run build:access-writer && node tests/access-export-integration.mjs
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { accessExportPayload } from '../src/access-export.js';
+const work = fs.mkdtempSync(path.join(os.tmpdir(), 'macrosoft-export-test-'));
+try {
+  const input = path.join(work, 'tables.txt');
+  const output = path.join(work, 'test.accdb');
+  fs.writeFileSync(input, accessExportPayload([{ name: 'Contacts', columns: [{ name: 'ID', type: 'INTEGER' }, { name: 'Name', type: 'TEXT' }, { name: 'Balance', type: 'REAL' }], rows: [{ ID: 1, Name: 'Zoë\nSmith', Balance: 2.5 }, { ID: 2, Name: '', Balance: null }] }]));
+  const jar = path.join(process.cwd(), 'access-writer/target/access-writer.jar');
+  const write = spawnSync('/usr/bin/java', ['-jar', jar, input, output], { encoding: 'utf8' });
+  assert.equal(write.status, 0, write.stderr);
+  assert.equal(fs.readFileSync(output).subarray(0, 4).toString('hex'), '00010000'); // ACE compound file, not SQLite.
+  const tables = spawnSync('mdb-tables', ['-1', output], { encoding: 'utf8' });
+  assert.equal(tables.status, 0, tables.stderr);
+  assert.match(tables.stdout, /Contacts/);
+  const exported = spawnSync('mdb-export', [output, 'Contacts'], { encoding: 'utf8' });
+  assert.equal(exported.status, 0, exported.stderr);
+  assert.match(exported.stdout, /Zoë\nSmith/);
+  assert.match(exported.stdout, /2\.5/);
+  const schema = spawnSync('mdb-schema', ['-T', 'Contacts', output, 'sqlite'], { encoding: 'utf8' });
+  assert.equal(schema.status, 0, schema.stderr);
+  assert.match(schema.stdout, /REAL|DOUBLE|FLOAT/i);
+  const repeat = spawnSync('/usr/bin/java', ['-jar', jar, input, output], { encoding: 'utf8' });
+  assert.notEqual(repeat.status, 0, 'A second export must refuse existing files');
+  assert.equal(fs.existsSync(output), true);
+  const invalid = path.join(work, 'invalid.txt');
+  const rejectedOutput = path.join(work, 'rejected.accdb');
+  fs.writeFileSync(invalid, accessExportPayload([{ name: 'TooBig', columns: [{ name: 'ID', type: 'INTEGER' }], rows: [{ ID: 2147483648 }] }]));
+  const rejected = spawnSync('/usr/bin/java', ['-jar', jar, invalid, rejectedOutput], { encoding: 'utf8' });
+  assert.notEqual(rejected.status, 0, 'Unsafe numeric values must fail the entire export');
+  assert.equal(fs.existsSync(rejectedOutput), false, 'No partial Access file should survive');
+  console.log('PASS: real Access 2016 .accdb written, readable by mdbtools; existing file protected, unsafe data rejected');
+} finally { fs.rmSync(work, { recursive: true, force: true }); }

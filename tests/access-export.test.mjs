@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import { accessExportPayload } from '../src/access-export.js';
+const text = accessExportPayload([{ name: 'Names', columns: [{ name: 'id', type: 'INTEGER' }, { name: 'name', type: 'TEXT' }, { name: 'price', type: 'REAL' }], rows: [{ id: 1, name: 'Zoë\nSmith', price: 2.5 }, { id: 2, name: '', price: null }] }]);
+const lines = text.trimEnd().split('\n');
+assert.equal(lines[0], 'MDA-TABLES-1');
+assert.equal(lines[1], '1');
+assert.equal(lines[10], '2');
+assert.equal(lines[11], 'VMQ==');
+assert.equal(lines[12], `V${Buffer.from('Zoë\nSmith').toString('base64')}`);
+assert.equal(lines.at(-2), 'V');
+assert.equal(lines.at(-1), 'N');
+assert.throws(() => accessExportPayload([{ name: 'Photos', columns: [{ name: 'image', type: 'BLOB' }], rows: [] }]), /BLOB/);
+assert.throws(() => accessExportPayload([{ name: 'Photos', columns: [{ name: 'image', type: 'TEXT' }], rows: [{ image: new Uint8Array([1]) }] }]), /Binary/);
+console.log('PASS: loss-aware Access table export encoding, Unicode, empty values and NULL');

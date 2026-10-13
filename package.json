@@ -1,6 +1,6 @@
 {
   "name": "macrosoft-access",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "A local-first visual relational database studio for macOS",
   "main": "electron/main.cjs",
   "type": "module",
@@ -8,8 +8,9 @@
     "dev": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
     "start": "electron .",
     "build": "vite build",
-    "dist:mac": "npm run build && electron-builder --mac",
-    "check": "node tests/metadata.test.mjs && node tests/compatibility.test.mjs && node tests/form-model.test.mjs && node tests/access-schema.test.mjs && node tests/access-sql.test.mjs && node tests/report-model.test.mjs && vite build"
+    "build:access-writer": "mvn -q -f access-writer/pom.xml -DskipTests package",
+    "dist:mac": "npm run build && npm run build:access-writer && electron-builder --mac",
+    "check": "node tests/metadata.test.mjs && node tests/compatibility.test.mjs && node tests/form-model.test.mjs && node tests/access-schema.test.mjs && node tests/access-sql.test.mjs && node tests/report-model.test.mjs && node tests/access-export.test.mjs && vite build"
   },
   "dependencies": {
     "sql.js": "^1.13.0"
@@ -31,6 +32,12 @@
       "renderer-dist/**/*",
       "electron/**/*",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "access-writer/target/access-writer.jar",
+        "to": "access-writer.jar"
+      }
     ],
     "mac": {
       "category": "public.app-category.developer-tools",

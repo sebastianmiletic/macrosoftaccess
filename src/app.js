@@ -7,6 +7,7 @@ import { defaultFormSettings, normalizeFormSettings, FORM_CONTROL_TYPES } from '
 import { fieldMapping } from './access-schema.js';
 import { translateAccessSql, registerAccessFunctions } from './access-sql.js';
 import { normalizeReportSettings } from './report-model.js';
+import { accessExportPayload } from './access-export.js';
 
 const SQL = await initSqlJs({ locateFile: () => wasmUrl });
 
@@ -135,13 +136,14 @@ async function renderBackstage(page = 'info') {
   const row = (icon, title, description, action) => `<div class="file-action-row"><span>${icon}</span><div><strong>${title}</strong><p>${description}</p></div><button class="secondary-button" data-action="${action}">Open</button></div>`;
   const recentRows = recent => recent.length ? recent.map(item => `<div class="recent-row"><button data-recent-path="${escapeHtml(item.path)}" ${item.available ? '' : 'disabled'}><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.path)}${item.available ? '' : ' · Unavailable'}</small></button><button class="recent-remove" data-remove-recent="${escapeHtml(item.path)}" title="Remove from recent">×</button></div>`).join('') : '<p>No recent databases yet. Create one or browse for a local file.</p>';
   if (page === 'home') {
-    content.innerHTML = `<div class="file-home"><h1>Good ${new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 18 ? 'afternoon' : 'evening'}</h1><section class="home-new"><h2>New</h2><div class="home-templates"><button data-action="new"><span class="template-symbol">▤</span><strong>Blank database</strong></button><button data-action="template-contacts"><span class="template-symbol">♙</span><strong>Contacts</strong></button><button data-action="template-inventory"><span class="template-symbol">▦</span><strong>Inventory</strong></button><button data-action="template-tasks"><span class="template-symbol">☑</span><strong>Tasks</strong></button></div></section><section class="home-recent"><div class="home-recent-header"><h2>Recent databases</h2><button class="secondary-button" data-action="open">Browse files…</button></div><label class="home-search">⌕ <input id="homeRecentSearch" type="search" aria-label="Search recent databases" placeholder="Search recent databases"></label><div id="recentList" class="recent-list">Loading recent files…</div></section><p class="compat-note">Projects use local SQLite files. Access .mdb/.accdb table data can be imported, but native Access files cannot be edited or saved.</p></div>`;
+    content.innerHTML = `<div class="file-home"><h1>Good ${new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 18 ? 'afternoon' : 'evening'}</h1><section class="home-new"><h2>New</h2><div class="home-templates"><button data-action="new"><span class="template-symbol">▤</span><strong>Blank database</strong></button><button data-action="template-contacts"><span class="template-symbol">♙</span><strong>Contacts</strong></button><button data-action="template-inventory"><span class="template-symbol">▦</span><strong>Inventory</strong></button><button data-action="template-tasks"><span class="template-symbol">☑</span><strong>Tasks</strong></button></div></section><section class="home-recent"><div class="home-recent-header"><h2>Recent databases</h2><button class="secondary-button" data-action="open">Browse files…</button></div><label class="home-search">⌕ <input id="homeRecentSearch" type="search" aria-label="Search recent databases" placeholder="Search recent databases"></label><div id="recentList" class="recent-list">Loading recent files…</div></section><p class="compat-note">Projects use local SQLite files. Access table data can be imported or exported to a new .accdb, but existing Access files cannot be edited in place.</p><p id="buildVersion" class="build-version" aria-label="App version">Version loading…</p></div>`;
+    window.desktop.version().then(version => { if (state.backstagePage === 'home' && $('#buildVersion')) $('#buildVersion').textContent = `Macrosoft Access ${version}`; }).catch(() => {});
     try {
       const recent = await window.desktop.recentFiles();
       if (state.backstagePage === 'home') $('#recentList').innerHTML = recentRows(recent);
     } catch (error) { if (state.backstagePage === 'home') $('#recentList').textContent = `Could not load recent files: ${error.message}`; }
   } else if (page === 'info') {
-    content.innerHTML = `<h1>Database information</h1><div class="file-info"><img class="file-logo" src="${logoUrl}" alt="Macrosoft Access logo" /><div><h2>${escapeHtml(state.fileName || 'No database open')}</h2><p>${escapeHtml(state.filePath || 'Create or open a database to begin.')}</p></div></div><div class="file-actions">${row('ⓘ', 'Properties', 'Tables, records, file size and storage engine.', 'database-info')}${row('◎', 'Compatibility report', 'See preserved, converted and unsupported Access objects.', 'compatibility-report')}${row('⧉', 'Back up database', 'Save a separate portable snapshot.', 'backup')}${row('✓', 'Check integrity', 'Inspect SQLite pages and indexes.', 'integrity-check')}${row('◫', 'Compact database', 'Reclaim unused storage.', 'compact')}</div><p class="compat-note">Access .mdb/.accdb table data can be imported with mdbtools. Native files use SQLite, not the Microsoft Access engine.</p>`;
+    content.innerHTML = `<h1>Database information</h1><div class="file-info"><img class="file-logo" src="${logoUrl}" alt="Macrosoft Access logo" /><div><h2>${escapeHtml(state.fileName || 'No database open')}</h2><p>${escapeHtml(state.filePath || 'Create or open a database to begin.')}</p></div></div><div class="file-actions">${row('ⓘ', 'Properties', 'Tables, records, file size and storage engine.', 'database-info')}${row('◎', 'Compatibility report', 'See preserved, converted and unsupported Access objects.', 'compatibility-report')}${row('⧉', 'Back up database', 'Save a separate portable snapshot.', 'backup')}${row('✓', 'Check integrity', 'Inspect SQLite pages and indexes.', 'integrity-check')}${row('◫', 'Compact database', 'Reclaim unused storage.', 'compact')}</div><p class="compat-note">Access .mdb/.accdb table data can be imported with mdbtools. Projects use SQLite, not the Microsoft Access engine. Export can create a separate .accdb with table data only.</p>`;
   } else if (page === 'new') {
     content.innerHTML = `<h1>New</h1><p class="page-lede">Start with a blank database or a ready-to-edit local template.</p><div class="template-list">${row('▦', 'Blank database', 'Create your own tables and relationships.', 'new')}${row('♟', 'Contacts', 'People, organisations and contact details.', 'template-contacts')}${row('▤', 'Inventory', 'Products, quantities and stock locations.', 'template-inventory')}${row('✓', 'Tasks', 'Track tasks, owners, priorities and due dates.', 'template-tasks')}</div>`;
   } else if (page === 'open') {
@@ -154,12 +156,12 @@ async function renderBackstage(page = 'info') {
   } else if (page === 'import') {
     content.innerHTML = `<h1>Import</h1><p class="page-lede">Bring data into a local database.</p><div class="file-actions">${row('CSV', 'Text / CSV', 'Create a new table from a header row and records.', 'import-csv')}${row('▦', 'Access .mdb / .accdb', 'Import table data using mdbtools. Objects and VBA are not preserved.', 'import-database')}</div>`;
   } else if (page === 'export') {
-    content.innerHTML = `<h1>Export</h1><p class="page-lede">Export the current table, query result or report.</p><div class="file-actions">${row('CSV', 'CSV', 'Export current result data as comma-separated values.', 'export-csv')}${row('PDF', 'PDF', 'Save the active report or document as a PDF.', 'export-pdf')}${row('⧉', 'Database backup', 'Export a complete SQLite database snapshot.', 'backup')}</div>`;
+    content.innerHTML = `<h1>Export</h1><p class="page-lede">Export the current table, query result or report.</p><div class="file-actions">${row('CSV', 'CSV', 'Export current result data as comma-separated values.', 'export-csv')}${row('PDF', 'PDF', 'Save the active report or document as a PDF.', 'export-pdf')}${row('▦', 'Access .accdb table data', 'Create a new Access 2016 file containing local tables and values only; Java 17+ required.', 'export-access')}${row('⧉', 'Database backup', 'Export a complete SQLite database snapshot.', 'backup')}</div>`;
   } else if (page === 'options') {
     const s = state.settings;
     content.innerHTML = `<h1>Options</h1><p class="page-lede">Application preferences are saved on this Mac.</p><div class="settings-group"><h2>Appearance</h2><label>Theme<select data-setting="theme"><option value="light" ${s.theme === 'light' ? 'selected' : ''}>Light</option><option value="dark" ${s.theme === 'dark' ? 'selected' : ''}>Dark</option></select></label><label>Interface density<select data-setting="density"><option value="compact" ${s.density === 'compact' ? 'selected' : ''}>Compact</option><option value="comfortable" ${s.density === 'comfortable' ? 'selected' : ''}>Comfortable</option></select></label></div><div class="settings-group"><h2>Editing</h2><label>Query result limit<select data-setting="rows"><option value="100" ${s.rows === 100 ? 'selected' : ''}>100 rows</option><option value="1000" ${s.rows === 1000 ? 'selected' : ''}>1,000 rows</option><option value="10000" ${s.rows === 10000 ? 'selected' : ''}>10,000 rows</option></select></label><label class="check-setting"><input type="checkbox" data-setting="confirmActions" ${s.confirmActions ? 'checked' : ''}> Confirm SQL that modifies data or schema</label></div><div class="settings-group"><h2>Queries</h2><label>Default SQL dialect<select data-setting="sqlDialect"><option value="sqlite" ${s.sqlDialect !== 'access' ? 'selected' : ''}>SQLite</option><option value="access" ${s.sqlDialect === 'access' ? 'selected' : ''}>Access-style subset</option></select></label><p>Access-style mode translates selected expressions and SELECT TOP. It does not implement the full Access SQL dialect.</p></div><div class="settings-group"><h2>Current database</h2><label>Default table view<select data-db-setting="defaultTableView" ${state.db ? '' : 'disabled'}><option value="datasheet" ${databaseSetting('defaultTableView', 'datasheet') === 'datasheet' ? 'selected' : ''}>Datasheet</option><option value="design" ${databaseSetting('defaultTableView', 'datasheet') === 'design' ? 'selected' : ''}>Design</option></select></label><p>${state.db ? 'Saved inside this database.' : 'Open a database to edit its settings.'}</p></div>`;
   } else if (page === 'help') {
-    content.innerHTML = `<h1>Help</h1><div class="file-actions"><h2>Keyboard shortcuts</h2><p>⌘N New database · ⌘O Open · ⌘S Save · ⌘K Search commands · ⌘↵ Run SQL · ⌘, Options</p><h2>Compatibility</h2><p>Macrosoft Access is a local SQLite-based database app. It is not Microsoft Access. Access table-data import requires mdbtools; .accdb saving, VBA, and native Access forms and reports are not available.</p><h2>Data safety</h2><p>Save regularly and keep backups of important databases. SQL commands can change or delete data.</p></div>`;
+    content.innerHTML = `<h1>Help</h1><div class="file-actions"><h2>Keyboard shortcuts</h2><p>⌘N New database · ⌘O Open · ⌘S Save · ⌘K Search commands · ⌘↵ Run SQL · ⌘, Options</p><h2>Compatibility</h2><p>Macrosoft Access is a local SQLite-based database app. It is not Microsoft Access. Access table-data import requires mdbtools. A separate new .accdb table-data export requires Java 17+. Editing an existing .accdb, VBA, and native Access forms and reports are not available.</p><h2>Data safety</h2><p>Save regularly and keep backups of important databases. SQL commands can change or delete data.</p></div>`;
   }
 }
 
@@ -211,6 +213,21 @@ async function newDatabase(fromTemplate = false) {
 async function confirmDiscard() {
   if (!state.dirty) return true;
   return window.confirm('This database has unsaved changes. Continue without saving?');
+}
+
+let quitInProgress = false;
+async function requestQuit() {
+  if (quitInProgress) return;
+  quitInProgress = true;
+  try {
+    const answer = await window.desktop.confirmQuit(state.dirty);
+    if (answer === 'save') {
+      await saveDatabase();
+      if (state.dirty) return; // Canceled the save dialog or the write failed.
+    } else if (answer !== 'discard') return;
+    await window.desktop.finishQuit();
+  } catch (error) { toast(`Could not quit safely: ${error.message}`, 'error'); }
+  finally { quitInProgress = false; }
 }
 
 async function chooseAccessImport() {
@@ -325,7 +342,9 @@ function finishOpen(message) {
 async function saveDatabase(saveAs = false) {
   if (!ensureDb()) return;
   const data = Array.from(state.db.export());
-  const saved = await window.desktop.saveFile({ filePath: state.filePath, data, saveAs });
+  let saved;
+  try { saved = await window.desktop.saveFile({ filePath: state.filePath, data, saveAs }); }
+  catch (error) { toast(`Could not save database: ${error.message}`, 'error'); return; }
   if (!saved) return;
   state.filePath = saved.path;
   state.fileName = saved.name;
@@ -1114,6 +1133,21 @@ async function backupDatabase() {
   if (file) toast(`Backup created: ${file}`);
 }
 
+async function exportAccessTables() {
+  if (!ensureDb()) return;
+  if (!window.confirm('Create a new .accdb containing table data only? Forms, queries, reports, relationships, constraints and VBA will NOT be exported. The original and local project will stay unchanged.')) return;
+  try {
+    const tables = state.objects.tables.map(name => ({ name, columns: getColumns(name), rows: rowsFromExec(`SELECT * FROM ${quoteId(name)}`) }));
+    if (!tables.length) return toast('Create a table before exporting to Access.', 'error');
+    const payload = accessExportPayload(tables);
+    const file = await window.desktop.exportAccess({ name: (state.fileName || 'Database').replace(/\.[^.]+$/, ''), payload });
+    if (file) {
+      setStatus('Access table-data export completed');
+      toast(`Created ${file}. Verify all tables and rows in Microsoft Access.`);
+    }
+  } catch (error) { toast(`Access export failed: ${error.message}`, 'error'); }
+}
+
 async function exportPdf() {
   const tab = state.tabs.find(t => t.id === state.activeTab);
   if (!tab) return toast('Open a report or document to export.', 'error');
@@ -1152,7 +1186,7 @@ async function performAction(action) {
     new: () => newDatabase(), open: () => openDatabase(), save: () => saveDatabase(false), 'save-as': () => saveDatabase(true),
     'template-contacts': () => createTemplate('contacts'), 'template-inventory': () => createTemplate('inventory'), 'template-tasks': () => createTemplate('tasks'),
     options: () => showBackstage('options'), 'import-database': chooseAccessImport,
-    'close-database': closeDatabase, 'close-file': closeBackstage,
+    'close-database': closeDatabase, 'close-file': closeBackstage, 'request-quit': requestQuit,
     'create-table': () => createTable(), 'create-table-design': () => createTable('design'), 'new-record': () => addRecord($('.datasheet')?.dataset.table),
     'delete-record': deleteSelectedRecord, delete: deleteCurrent, refresh: renderActiveTab,
     'sql-query': () => { if (ensureDb()) renderSqlWorkspace('SQL Query'); },
@@ -1167,7 +1201,7 @@ async function performAction(action) {
     'database-info': showDatabaseInfo, 'compatibility-report': showCompatibilityReport,
     'integrity-check': integrityCheck, backup: backupDatabase,
     'add-field': addField, 'commit-field': commitField, 'create-index': createIndex,
-    'import-csv': importCsv, 'export-csv': exportCsv, 'export-pdf': exportPdf,
+    'import-csv': importCsv, 'export-csv': exportCsv, 'export-pdf': exportPdf, 'export-access': exportAccessTables,
     print: () => window.desktop.print(), 'command-palette': openCommandPalette, view: switchView,
     'datasheet-view': () => setTableView('datasheet'), 'design-view': () => setTableView('design'),
     'filter-records': filterRecords, 'clear-filter': clearFilter, 'find-record': findRecord,
@@ -1184,7 +1218,7 @@ const paletteCommands = [
   ['Save database', 'save', 'File'], ['Save As', 'save-as', 'File'], ['Options', 'options', 'File'],
   ['Contacts template', 'template-contacts', 'New'], ['Inventory template', 'template-inventory', 'New'], ['Tasks template', 'template-tasks', 'New'],
   ['Create table', 'create-table', 'Create'], ['Import CSV', 'import-csv', 'External Data'],
-  ['Export CSV', 'export-csv', 'External Data'], ['Export PDF', 'export-pdf', 'External Data'],
+  ['Export CSV', 'export-csv', 'External Data'], ['Export PDF', 'export-pdf', 'External Data'], ['Export Access table data', 'export-access', 'External Data'],
   ['SQL query', 'sql-query', 'Create'], ['Visual query designer', 'query-design', 'Create'],
   ['Create form', 'create-form', 'Create'], ['Form Design View', 'form-design', 'Form Tools'], ['Form View', 'form-view', 'Form Tools'], ['Create report', 'create-report', 'Create'],
   ['Switch view', 'view', 'Home'], ['Add field', 'add-field', 'Design'],
@@ -1411,10 +1445,6 @@ document.addEventListener('keydown', event => {
   if ((event.metaKey || event.ctrlKey) && event.key === ',') { event.preventDefault(); showBackstage('options'); }
   if ((event.metaKey || event.ctrlKey) && event.key === 'Enter' && $('#sqlEditor')) { event.preventDefault(); runQuery(); }
   if (event.key === 'Escape') { closeBackstage(); $('#contextMenu').classList.add('hidden'); }
-});
-
-window.addEventListener('beforeunload', event => {
-  if (state.dirty) { event.preventDefault(); event.returnValue = ''; }
 });
 
 window.desktop.onCommand(command => performAction(command));

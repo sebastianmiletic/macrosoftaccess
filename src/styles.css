@@ -282,6 +282,7 @@
   .backstage > section > h1 { font-size: 30px; font-weight: 500; margin-top: 0; }
   .file-home { max-width: 1600px; }
   .file-home h1 { font-size: 24px; font-weight: 650; margin: 0 0 30px; }
+  .build-version { margin-top: 32px; font-size: 11px; color: var(--muted); }
   .file-home h2 { font-size: 14px; font-weight: 650; margin: 0 0 17px; }
   .home-new { padding-bottom: 25px; border-bottom: 1px solid var(--line); }
   .home-templates { display: flex; align-items: start; gap: clamp(10px, 3.5vw, 55px); flex-wrap: wrap; }

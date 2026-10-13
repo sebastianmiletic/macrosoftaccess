@@ -4,7 +4,7 @@ This is an implementation tracker, not a statement of parity with any Microsoft 
 
 | Area | Status | Current implementation / gap |
 | --- | --- | --- |
-| macOS shell and startup | Partial | Native window, menus, ribbon-style controls, tabs, search, templates and recent files. No exact Access visual parity, recovery or startup form. |
+| macOS shell and startup | Partial | Native window, menus, ribbon-style controls, tabs, search, templates and recent files. No exact Access visual parity or startup form. A native Save/Discard/Cancel close flow is implemented; crash recovery is not. |
 | Project persistence | Partial | Local SQLite files, atomic save, backups, versioned private metadata. No crash recovery, concurrent locking or migration preview. |
 | Tables and datasheets | Partial | Access-inspired compact datasheet and contextual Fields ribbon with working quick-add text, integer, date and boolean fields; explicit Datasheet/Design views; inline field type/default/required settings. Existing fields remain read-only; no full Access type matrix, validation designer, multi-cell selection or undo. |
 | Relationships | Partial | Visual metadata relationships; not enforced by SQLite unless defined explicitly in SQL. |
@@ -12,7 +12,7 @@ This is an implementation tracker, not a statement of parity with any Microsoft 
 | Forms | Partial | Generated bound single-record editor with saved form title, captions, bound field visibility/required settings, text/long text/number/date/checkbox controls, reorder by drag or keyboard-accessible buttons. No free-placement designer, subforms, lookup controls, macros or events. |
 | Reports | Partial | Tabular preview, print/PDF and persisted Design View for title, column visibility/order and sorting. No grouping, pagination controls, calculated controls or charts. |
 | Macros and scripting | Not implemented | No VBA interpreter, Access object model, macro builder or trusted script runtime. |
-| Import/export | Partial | CSV import/export; mdbtools `.mdb/.accdb` table data import with schema-informed SQLite integer/real mapping and conversion report. No round-trip `.accdb`, Access query/form/report conversion, linked sources, Excel or ODBC. |
+| Import/export | Partial | CSV import/export; mdbtools `.mdb/.accdb` table data import with schema-informed SQLite integer/real mapping and conversion report. A separate Java 17+/Jackcess exporter produces genuine new Access 2016 `.accdb` table-data files with strict numeric and binary rejection. No in-place `.accdb` editing, metadata/object round-trip, Access query/form/report conversion, linked sources, Excel or ODBC. |
 | Compatibility inspection | Partial | Conversion report lists imported tables, row counts and known unsupported families. Cannot inventory every unsupported Access object from the file. |
 | Settings and accessibility | Partial | Access-inspired start screen with searchable recent local files; persisted theme/density/query limit and database table view, visible focus and reduced-motion support. No exact Windows Access UI, complete preference catalogue or audited VoiceOver support. |
 | Platform and distribution | Partial | macOS-only runtime and Apple Silicon DMG; signed where identity is available, not notarised. Linux is not supported yet. |
@@ -39,8 +39,8 @@ This is an implementation tracker, not a statement of parity with any Microsoft 
 | Format | Open/read | Modify in original format | Preserve Access objects |
 | --- | --- | --- | --- |
 | `.macrodb`, `.sqlite`, `.db` | Yes, as SQLite | Yes, save SQLite | Only this app's supported object metadata |
-| `.mdb`, `.accdb` | Table-data import through external mdbtools, if readable | No | Partially: table columns and some numeric affinities; forms, reports, macros, VBA, constraints and most schema semantics are not preserved |
+| `.mdb`, `.accdb` | Table-data import through external mdbtools, if readable | **No in-place edit**; optional **new `.accdb` table-data export** requires Java 17+ | Exported files are actual Access 2016 files; table data and basic type mappings only. Access forms, reports, queries, macros, VBA, keys and constraints are not preserved |
 | `.csv` | Table import | Export CSV | No |
 | `.accde`, `.mde`, `.accdr`, `.laccdb`, `.ldb`, `.xlsx` | No | No | No |
 
-The imported Access source file is never intentionally modified. Always compare critical imported data with the original. Integration tests have been run against `.mdb` and `.accdb` examples from the public `mdbtools/mdbtestdata` repository. Fixtures are downloaded to a local temporary directory and are not included in this repository.
+The imported Access source file is never intentionally modified. Export refuses to replace existing files. Always compare critical imported data with the original. Integration tests have been run against `.mdb` and `.accdb` examples from the public `mdbtools/mdbtestdata` repository. Fixtures are downloaded to a local temporary directory and are not included in this repository.

@@ -1,6 +1,7 @@
 const { app, BrowserWindow, dialog, ipcMain, Menu, clipboard } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const os = require('node:os');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const execFileAsync = promisify(execFile);
@@ -11,6 +12,7 @@ function toolPath(name) {
 }
 
 let mainWindow;
+let closeApproved = false;
 const devServerUrl = process.env.VITE_DEV_SERVER_URL;
 
 const recentPath = () => path.join(app.getPath('userData'), 'recent.json');
@@ -41,6 +43,11 @@ function createWindow() {
       nodeIntegration: false
     }
   });
+  mainWindow.on('close', event => {
+    if (closeApproved || mainWindow.webContents.isDestroyed() || mainWindow.webContents.isLoadingMainFrame()) return;
+    event.preventDefault();
+    mainWindow.webContents.send('app-command', 'request-quit');
+  });
   if (devServerUrl) mainWindow.loadURL(devServerUrl);
   else mainWindow.loadFile(path.join(__dirname, '..', 'renderer-dist', 'index.html'));
 }
@@ -64,6 +71,7 @@ function installMenu() {
       { label: 'Import Access File…', click: () => sendCommand('import-database') },
       { label: 'Import CSV…', click: () => sendCommand('import-csv') },
       { label: 'Export CSV…', click: () => sendCommand('export-csv') },
+      { label: 'Export Access Table Data…', click: () => sendCommand('export-access') },
       { type: 'separator' },
       { label: 'Export Report as PDF…', click: () => sendCommand('export-pdf') },
       { label: 'Print…', accelerator: 'CmdOrCtrl+P', click: () => sendCommand('print') },
@@ -84,7 +92,18 @@ function installMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+const hasInstanceLock = app.requestSingleInstanceLock();
+if (!hasInstanceLock) app.quit();
+app.on('second-instance', () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  }
+});
+
 app.whenReady().then(() => {
+  if (!hasInstanceLock) return;
   if (process.platform !== 'darwin') {
     dialog.showErrorBox('Macrosoft Access requires macOS', 'Only macOS is supported in this release. Linux support is planned for a later version.');
     app.quit();
@@ -93,8 +112,28 @@ app.whenReady().then(() => {
   installMenu();
   createWindow();
 });
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+// A closed window must not leave an invisible copy running behind a new build.
+app.on('window-all-closed', () => app.quit());
 app.on('activate', () => { if (process.platform === 'darwin' && BrowserWindow.getAllWindows().length === 0) createWindow(); });
+
+ipcMain.handle('app:version', () => app.getVersion());
+ipcMain.handle('window:confirm-quit', async (event, dirty) => {
+  if (event.sender !== mainWindow?.webContents) return 'cancel';
+  if (!dirty) return 'discard';
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: 'warning', title: 'Unsaved database',
+    message: 'Save changes before quitting Macrosoft Access?',
+    detail: 'Discard will lose changes made since the last save.',
+    buttons: ['Save', 'Cancel', 'Discard'], defaultId: 0, cancelId: 1, noLink: true
+  });
+  return ['save', 'cancel', 'discard'][response];
+});
+ipcMain.handle('window:finish-quit', event => {
+  if (event.sender !== mainWindow?.webContents) return false;
+  closeApproved = true;
+  app.quit();
+  return true;
+});
 
 ipcMain.handle('file:new-path', async () => {
   const result = await dialog.showSaveDialog(mainWindow, {
@@ -152,6 +191,7 @@ ipcMain.handle('file:save', async (_event, { filePath, data, saveAs }) => {
     if (result.canceled) return null;
     target = result.filePath;
   }
+  if (!/\.(macrodb|sqlite|db)$/i.test(target)) throw new Error('Projects must be saved as .macrodb, .sqlite or .db. Use Export Access tables for a separate .accdb file.');
   const temporary = `${target}.tmp-${process.pid}`;
   try {
     await fs.writeFile(temporary, Buffer.from(data));
@@ -204,6 +244,36 @@ ipcMain.handle('file:export-csv', async (_event, { name, csv }) => {
   if (result.canceled) return false;
   await fs.writeFile(result.filePath, csv, 'utf8');
   return true;
+});
+
+ipcMain.handle('file:export-access', async (_event, { name, payload }) => {
+  if (typeof payload !== 'string' || !payload.startsWith('MDA-TABLES-1\n') || Buffer.byteLength(payload) > 40 * 1024 * 1024) {
+    throw new Error('Invalid or oversized Access export. Use CSV for very large tables.');
+  }
+  const result = await dialog.showSaveDialog(mainWindow, {
+    title: 'Export table data to a new Access database',
+    defaultPath: `${String(name || 'Database').replace(/[\\/]/g, '_')}.accdb`,
+    filters: [{ name: 'Microsoft Access 2016 table data', extensions: ['accdb'] }]
+  });
+  if (result.canceled) return null;
+  const target = result.filePath;
+  if (!/\.accdb$/i.test(target)) throw new Error('Choose an .accdb destination.');
+  const work = await fs.mkdtemp(path.join(os.tmpdir(), 'macrosoft-accdb-'));
+  const jar = app.isPackaged ? path.join(process.resourcesPath, 'access-writer.jar') : path.join(__dirname, '..', 'access-writer', 'target', 'access-writer.jar');
+  try {
+    await fs.access(jar);
+    const input = path.join(work, 'tables.txt');
+    const output = path.join(work, 'export.accdb');
+    await fs.writeFile(input, payload, { mode: 0o600 });
+    try { await execFileAsync('/usr/bin/java', ['-jar', jar, input, output], { timeout: 120000, maxBuffer: 1024 * 1024 }); }
+    catch (error) { throw new Error(`Access writer failed. Install Java 17 or newer and check table values. ${error.stderr || error.message}`); }
+    // The Java writer only writes into a temporary directory. Never modify
+    // a source Access file, even if the user selects an existing file name.
+    try { await fs.access(target); throw new Error('Destination exists. Choose a new name; existing Access files are never overwritten.'); }
+    catch (error) { if (error.code !== 'ENOENT') throw error; }
+    await fs.copyFile(output, target, require('node:fs').constants.COPYFILE_EXCL);
+    return target;
+  } finally { await fs.rm(work, { recursive: true, force: true }); }
 });
 
 ipcMain.handle('access:import', async (_event, filePath) => {
