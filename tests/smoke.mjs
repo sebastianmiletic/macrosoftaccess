@@ -28,7 +28,7 @@ async function evaluate(expression) {
 try {
   assert.equal(await evaluate('document.title'), 'Macrosoft Access');
   assert.equal(await evaluate('document.querySelector(".app-mark")?.naturalWidth > 0'), true);
-  assert.equal(await evaluate('document.querySelector(".file-home") !== null'), true);
+  assert.equal(await evaluate('new Promise((resolve, reject) => { const start=Date.now(); const poll=() => { if (document.querySelector(".file-home")) return resolve(true); if (Date.now()-start>10000) return reject(new Error("Home did not appear")); setTimeout(poll,50); }; poll(); })'), true);
   assert.equal(await evaluate('document.querySelectorAll(".home-templates [data-action]").length'), 8);
   await evaluate('document.querySelector(".home-templates [data-action=new]").click()');
   assert.equal(await evaluate('document.querySelector("#tableDialog").open'), true);

@@ -1,0 +1,36 @@
+import assert from 'node:assert/strict';
+import initSqlJs from 'sql.js';
+import { templates } from '../src/templates.js';
+import { enableForeignKeys, exportEnforcingForeignKeys, foreignKeyViolations, declaredRelationships } from '../src/relationships.js';
+import { registerAccessFunctions } from '../src/access-sql.js';
+
+const SQL = await initSqlJs();
+const db = new SQL.Database();
+enableForeignKeys(db);
+registerAccessFunctions(db);
+db.exec(templates.find(item => item.kind === 'assets').sql);
+assert.equal(db.exec('PRAGMA foreign_keys')[0].values[0][0], 1);
+const relations = declaredRelationships(db, ['Assets', 'Locations', 'AssetAssignments']);
+assert(relations.some(item => item.fromTable === 'Assets' && item.fromField === 'location_id' && item.toTable === 'Locations' && item.toField === 'id'));
+assert.throws(() => db.run("INSERT INTO Assets(name, location_id) VALUES('Laptop', 999)"), /FOREIGN KEY constraint failed/);
+db.run("INSERT INTO Locations(name) VALUES('Office')");
+db.run("INSERT INTO Assets(name, location_id) VALUES('Laptop', 1)");
+assert.throws(() => db.run('DELETE FROM Locations WHERE id=1'), /FOREIGN KEY constraint failed/);
+assert.equal(foreignKeyViolations(db).length, 0);
+const bytes = exportEnforcingForeignKeys(db, registerAccessFunctions);
+assert.equal(db.exec('PRAGMA foreign_keys')[0].values[0][0], 1, 'sql.js export must restore enforcement');
+assert.equal(db.exec("SELECT MDA_Left('Laptop', 3)")[0].values[0][0], 'Lap', 'sql.js export must restore custom functions');
+assert.throws(() => db.run("INSERT INTO Assets(name, location_id) VALUES('Printer', 999)"), /FOREIGN KEY constraint failed/);
+const reopened = new SQL.Database(bytes);
+enableForeignKeys(reopened);
+assert.throws(() => reopened.run("INSERT INTO Assets(name, location_id) VALUES('Printer', 999)"), /FOREIGN KEY constraint failed/);
+reopened.close();
+// Existing SQLite files may contain invalid references from before enforcement.
+db.run('PRAGMA foreign_keys=OFF');
+db.run("INSERT INTO Assets(name, location_id) VALUES('Orphan', 999)");
+enableForeignKeys(db);
+assert.equal(foreignKeyViolations(db).length, 1);
+assert.equal(db.exec('PRAGMA integrity_check')[0].values[0][0], 'ok', 'integrity_check alone misses broken references');
+assert.throws(() => db.run("INSERT INTO Assets(name, location_id) VALUES('Again', 998)"), /FOREIGN KEY constraint failed/);
+db.close();
+console.log('PASS: enforced SQLite references, export/reopen, and legacy orphan detection');

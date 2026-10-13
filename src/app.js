@@ -9,6 +9,7 @@ import { translateAccessSql, registerAccessFunctions } from './access-sql.js';
 import { normalizeReportSettings } from './report-model.js';
 import { accessExportPayload } from './access-export.js';
 import { templates, featuredTemplates } from './templates.js';
+import { enableForeignKeys, exportEnforcingForeignKeys, foreignKeyViolations, declaredRelationships } from './relationships.js';
 
 const SQL = await initSqlJs({ locateFile: () => wasmUrl });
 
@@ -169,7 +170,7 @@ async function renderBackstage(page = 'info') {
     const s = state.settings;
     content.innerHTML = `<h1>Options</h1><p class="page-lede">Application preferences are saved on this Mac.</p><div class="settings-group"><h2>Appearance</h2><label>Theme<select data-setting="theme"><option value="light" ${s.theme === 'light' ? 'selected' : ''}>Light</option><option value="dark" ${s.theme === 'dark' ? 'selected' : ''}>Dark</option></select></label><label>Interface density<select data-setting="density"><option value="compact" ${s.density === 'compact' ? 'selected' : ''}>Compact</option><option value="comfortable" ${s.density === 'comfortable' ? 'selected' : ''}>Comfortable</option></select></label></div><div class="settings-group"><h2>Editing</h2><label>Query result limit<select data-setting="rows"><option value="100" ${s.rows === 100 ? 'selected' : ''}>100 rows</option><option value="1000" ${s.rows === 1000 ? 'selected' : ''}>1,000 rows</option><option value="10000" ${s.rows === 10000 ? 'selected' : ''}>10,000 rows</option></select></label><label class="check-setting"><input type="checkbox" data-setting="confirmActions" ${s.confirmActions ? 'checked' : ''}> Confirm SQL that modifies data or schema</label></div><div class="settings-group"><h2>Queries</h2><label>Default SQL dialect<select data-setting="sqlDialect"><option value="sqlite" ${s.sqlDialect !== 'access' ? 'selected' : ''}>SQLite</option><option value="access" ${s.sqlDialect === 'access' ? 'selected' : ''}>Access-style subset</option></select></label><p>Access-style mode translates selected expressions and SELECT TOP. It does not implement the full Access SQL dialect.</p></div><div class="settings-group"><h2>Current database</h2><label>Default table view<select data-db-setting="defaultTableView" ${state.db ? '' : 'disabled'}><option value="datasheet" ${databaseSetting('defaultTableView', 'datasheet') === 'datasheet' ? 'selected' : ''}>Datasheet</option><option value="design" ${databaseSetting('defaultTableView', 'datasheet') === 'design' ? 'selected' : ''}>Design</option></select></label><p>${state.db ? 'Saved inside this database.' : 'Open a database to edit its settings.'}</p></div>`;
   } else if (page === 'help') {
-    content.innerHTML = `<h1>Help</h1><div class="file-actions"><h2>Keyboard shortcuts</h2><p>⌘N New database · ⌘O Open · ⌘S Save · ⌘K Search commands · ⌘↵ Run SQL · ⌘, Options</p><h2>Compatibility</h2><p>Macrosoft Access is a local SQLite-based database app. It is not Microsoft Access. Access table-data import requires mdbtools. A separate new .accdb table-data export requires Java 17+. Editing an existing .accdb, VBA, and native Access forms and reports are not available.</p><h2>Data safety</h2><p>Save regularly and keep backups of important databases. SQL commands can change or delete data.</p></div>`;
+    content.innerHTML = `<h1>Help</h1><div class="file-actions"><h2>Keyboard shortcuts</h2><p>⌘N New database · ⌘O Open · ⌘S Save · ⌘K Search commands · ⌘↵ Run SQL · ⌘, Options</p><h2>Compatibility</h2><p>Macrosoft Access is a local SQLite-based database app. It is not Microsoft Access. Access table-data import requires mdbtools. A separate new .accdb table-data export requires Java 17+. Editing an existing .accdb, VBA, and native Access forms and reports are not available.</p><h2>Data safety</h2><p>Save regularly and keep backups of important databases. SQL commands can change or delete data. Declared SQLite foreign keys are enforced; diagram links are visual notes and do not enforce integrity.</p></div>`;
   }
 }
 
@@ -203,6 +204,7 @@ async function newDatabase(fromTemplate = false) {
   state.db = new SQL.Database();
   registerAccessFunctions(state.db);
   createMetadata();
+  enableForeignKeys(state.db);
   state.filePath = null;
   state.fileName = 'Untitled.macrodb';
   state.filter = null;
@@ -266,7 +268,7 @@ async function openDatabase(requestedPath) {
   try { incoming = new SQL.Database(bytes); }
   catch (error) { toast(`Could not open database: ${error.message}`, 'error'); return; }
   let migrated;
-  try { registerAccessFunctions(incoming); migrated = migrateMetadata(incoming); }
+  try { registerAccessFunctions(incoming); migrated = migrateMetadata(incoming); enableForeignKeys(incoming); }
   catch (error) {
     incoming.close();
     toast(`Could not open database: ${error.message}`, 'error');
@@ -282,6 +284,10 @@ async function openDatabase(requestedPath) {
     state.importReport = json ? JSON.parse(json) : null;
   } catch { state.importReport = null; }
   if (migrated) markDirty(true);
+  try {
+    const violations = foreignKeyViolations(state.db);
+    if (violations.length) toast(`${violations.length} existing broken reference${violations.length === 1 ? '' : 's'} found. Open Relationships or run Integrity check.`, 'error');
+  } catch (error) { toast(`Could not inspect foreign keys: ${error.message}`, 'error'); }
 }
 
 async function importAccessDatabase(file) {
@@ -357,6 +363,7 @@ async function importAccessDatabase(file) {
     const report = createImportReport(file.name, details, count);
     incoming.run("INSERT INTO _mda_meta(key,value) VALUES('import_report',?)", [JSON.stringify(report)]);
     incoming.run('RELEASE access_import');
+    enableForeignKeys(incoming);
     state.db?.close();
     state.db = incoming;
     state.filePath = null;
@@ -389,11 +396,16 @@ function finishOpen(message) {
   setStatus(message);
 }
 
+function snapshotDatabase() {
+  // sql.js export() recreates its connection: restore both FK enforcement and
+  // the registered Access-style SQL functions before the user can edit again.
+  return exportEnforcingForeignKeys(state.db, registerAccessFunctions);
+}
+
 async function saveDatabase(saveAs = false) {
   if (!ensureDb()) return;
-  const data = Array.from(state.db.export());
   let saved;
-  try { saved = await window.desktop.saveFile({ filePath: state.filePath, data, saveAs }); }
+  try { saved = await window.desktop.saveFile({ filePath: state.filePath, data: Array.from(snapshotDatabase()), saveAs }); }
   catch (error) { toast(`Could not save database: ${error.message}`, 'error'); return; }
   if (!saved) return;
   state.filePath = saved.path;
@@ -777,10 +789,12 @@ function deleteSelectedRecord() {
   if (!selected) return toast('Select a record first.', 'error');
   const table = $('.datasheet').dataset.table;
   if (!window.confirm('Delete the selected record?')) return;
-  state.db.run(`DELETE FROM ${quoteId(table)} WHERE rowid=?`, [selected.dataset.rowid]);
-  state.rowSelection = null;
-  markDirty();
-  renderDatasheet(table);
+  try {
+    state.db.run(`DELETE FROM ${quoteId(table)} WHERE rowid=?`, [selected.dataset.rowid]);
+    state.rowSelection = null;
+    markDirty();
+    renderDatasheet(table);
+  } catch (error) { toast(`Could not delete record: ${error.message}`, 'error'); }
 }
 
 function renderSqlWorkspace(title, sql = 'SELECT *\nFROM ' + (state.objects.tables[0] ? quoteId(state.objects.tables[0]) : 'table_name') + '\nLIMIT 100;', dialect = state.settings.sqlDialect) {
@@ -816,6 +830,7 @@ function runQuery() {
   const started = performance.now();
   try {
     const sql = $('#queryDialect')?.value === 'access' ? translateAccessSql(source) : source;
+    if (/\bPRAGMA\s+(?:(?:main|temp)\s*\.\s*)?foreign_keys\s*(?:=|\()/i.test(sql)) throw new Error('Foreign-key enforcement cannot be changed in the SQL editor.');
     const isAction = /\b(INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|REPLACE|VACUUM)\b/i.test(sql);
     if (isAction && state.settings.confirmActions && !window.confirm('This query may change data or schema. Run it?')) return;
     const resultSets = state.db.exec(sql);
@@ -1060,19 +1075,25 @@ function showRelationships() {
   if (!state.tabs.some(t => t.id === id)) state.tabs.push({ id, type: 'relationships', name: 'Relationships' });
   state.activeTab = id;
   renderTabs();
-  const relations = rowsFromExec('SELECT * FROM _mda_relationships');
-  $('#documentSurface').innerHTML = `<div class="local-toolbar"><button class="tool-button primary" data-action="add-relationship">＋ Add relationship</button><span>${relations.length} relationship${relations.length === 1 ? '' : 's'}</span></div><div class="relationship-canvas">${state.objects.tables.map(table => `<div class="relation-table"><h3>${escapeHtml(table)}</h3>${getColumns(table).map(c => `<div class="relation-field">${c.pk ? '<span class="key">◆</span>' : ''}${escapeHtml(c.name)} <small>${escapeHtml(c.type)}</small></div>`).join('')}</div>`).join('')}<div class="message-panel">${relations.map(r => `${escapeHtml(r.from_table)}.${escapeHtml(r.from_field)} → ${escapeHtml(r.to_table)}.${escapeHtml(r.to_field)}`).join('\n') || 'No relationships defined.'}</div></div>`;
-  setStatus('Relationships');
+  const notes = rowsFromExec('SELECT * FROM _mda_relationships');
+  const declared = declaredRelationships(state.db, state.objects.tables);
+  let issues = [];
+  try { issues = foreignKeyViolations(state.db); } catch (error) { toast(`Foreign-key inspection failed: ${error.message}`, 'error'); }
+  const label = relation => `${escapeHtml(relation.fromTable)}.${escapeHtml(relation.fromField)} → ${escapeHtml(relation.toTable)}.${escapeHtml(relation.toField)}`;
+  $('#documentSurface').innerHTML = `<div class="local-toolbar"><button class="tool-button" data-action="add-relationship">＋ Add diagram link</button><span>${declared.length} enforced key${declared.length === 1 ? '' : 's'} · ${notes.length} diagram link${notes.length === 1 ? '' : 's'}${issues.length ? ` · ${issues.length} broken references` : ''}</span></div><div class="relationship-canvas">${state.objects.tables.map(table => `<div class="relation-table"><h3>${escapeHtml(table)}</h3>${getColumns(table).map(c => `<div class="relation-field">${c.pk ? '<span class="key">◆</span>' : ''}${escapeHtml(c.name)} <small>${escapeHtml(c.type)}</small></div>`).join('')}</div>`).join('')}<div class="relationship-list"><h3>Enforced foreign keys</h3>${declared.length ? declared.map(r => `<p data-relationship-kind="enforced">${label(r)} <small>SQLite constraint</small></p>`).join('') : '<p>No foreign keys declared in table SQL.</p>'}<h3>Diagram links (not enforced)</h3>${notes.length ? notes.map(r => `<p data-relationship-kind="diagram">${label({ fromTable: r.from_table, fromField: r.from_field, toTable: r.to_table, toField: r.to_field })}</p>`).join('') : '<p>No diagram links.</p>'}<p class="relationship-note">Diagram links are visual notes only. To enforce a new foreign key, create the table with a REFERENCES constraint in SQL. SQLite cannot add one to an existing table without rebuilding it.</p>${issues.length ? `<p class="relationship-warning">${issues.length} existing record${issues.length === 1 ? '' : 's'} violate declared foreign keys.</p>` : ''}</div></div>`;
+  setStatus('Relationships', issues.length ? `${issues.length} broken references` : `${declared.length} enforced keys`);
 }
 
 function addRelationship() {
   const format = 'child_table.child_field = parent_table.parent_field';
-  const value = window.prompt(`Enter relationship as:\n${format}`);
+  const value = window.prompt(`Add a visual diagram link (NOT enforced by SQLite):\n${format}`);
   if (!value) return;
   const match = value.match(/^\s*([^.=]+)\.([^.=]+)\s*=\s*([^.=]+)\.([^.=]+)\s*$/);
   if (!match) return toast(`Use the format ${format}`, 'error');
   const [, fromTable, fromField, toTable, toField] = match.map(s => s.trim());
   if (!state.objects.tables.includes(fromTable) || !state.objects.tables.includes(toTable)) return toast('A table name was not found.', 'error');
+  if (!getColumns(fromTable).some(column => column.name === fromField) || !getColumns(toTable).some(column => column.name === toField)) return toast('Both fields must exist in their tables.', 'error');
+  if (rowsFromExec('SELECT id FROM _mda_relationships WHERE from_table=? AND from_field=? AND to_table=? AND to_field=?', [fromTable, fromField, toTable, toField]).length) return toast('That diagram link already exists.', 'error');
   try {
     state.db.run('INSERT INTO _mda_relationships(from_table,from_field,to_table,to_field) VALUES(?,?,?,?)', [fromTable, fromField, toTable, toField]);
     markDirty(); showRelationships();
@@ -1252,8 +1273,8 @@ function showDatabaseInfo() {
   state.activeTab = id; renderTabs();
   const counts = Object.fromEntries(['tables', 'queries', 'forms', 'reports'].map(key => [key, state.objects[key].length]));
   const records = state.objects.tables.reduce((sum, table) => sum + Number(rowsFromExec(`SELECT COUNT(*) count FROM ${quoteId(table)}`)[0].count), 0);
-  const bytes = state.db.export().length;
-  $('#documentSurface').innerHTML = `<div class="database-dashboard"><h1>${escapeHtml(state.fileName || 'Untitled database')}</h1><p>${escapeHtml(state.filePath || 'Not saved yet')}</p><div class="summary-strip"><div class="summary-item"><strong>${counts.tables}</strong><span>Tables</span></div><div class="summary-item"><strong>${records}</strong><span>Records</span></div><div class="summary-item"><strong>${counts.queries}</strong><span>Queries</span></div><div class="summary-item"><strong>${counts.forms + counts.reports}</strong><span>Forms & reports</span></div><div class="summary-item"><strong>${formatBytes(bytes)}</strong><span>Database size</span></div></div><h2>Database tools</h2><div class="tool-list"><div class="tool-row"><span>✓</span><strong>Integrity check</strong><p>Check pages, indexes and database structure for errors.</p><button class="tool-button" data-action="integrity-check">Run</button></div><div class="tool-row"><span>◫</span><strong>Compact database</strong><p>Rebuild the file and reclaim unused storage.</p><button class="tool-button" data-action="compact">Compact</button></div><div class="tool-row"><span>⧉</span><strong>Backup</strong><p>Create a timestamped, portable database snapshot.</p><button class="tool-button" data-action="backup">Back Up</button></div><div class="tool-row"><span>⌘</span><strong>Relationships</strong><p>Inspect tables and define logical relationships.</p><button class="tool-button" data-action="relationships">Open</button></div></div></div>`;
+  const bytes = snapshotDatabase().length;
+  $('#documentSurface').innerHTML = `<div class="database-dashboard"><h1>${escapeHtml(state.fileName || 'Untitled database')}</h1><p>${escapeHtml(state.filePath || 'Not saved yet')}</p><div class="summary-strip"><div class="summary-item"><strong>${counts.tables}</strong><span>Tables</span></div><div class="summary-item"><strong>${records}</strong><span>Records</span></div><div class="summary-item"><strong>${counts.queries}</strong><span>Queries</span></div><div class="summary-item"><strong>${counts.forms + counts.reports}</strong><span>Forms & reports</span></div><div class="summary-item"><strong>${formatBytes(bytes)}</strong><span>Database size</span></div></div><h2>Database tools</h2><div class="tool-list"><div class="tool-row"><span>✓</span><strong>Integrity check</strong><p>Check database pages, indexes and declared foreign-key references.</p><button class="tool-button" data-action="integrity-check">Run</button></div><div class="tool-row"><span>◫</span><strong>Compact database</strong><p>Rebuild the file and reclaim unused storage.</p><button class="tool-button" data-action="compact">Compact</button></div><div class="tool-row"><span>⧉</span><strong>Backup</strong><p>Create a timestamped, portable database snapshot.</p><button class="tool-button" data-action="backup">Back Up</button></div><div class="tool-row"><span>⌘</span><strong>Relationships</strong><p>Inspect enforced foreign keys and optional visual diagram links.</p><button class="tool-button" data-action="relationships">Open</button></div></div></div>`;
   setStatus('Database Information');
 }
 
@@ -1265,16 +1286,21 @@ function formatBytes(bytes) {
 
 function integrityCheck() {
   if (!ensureDb()) return;
-  const result = rowsFromExec('PRAGMA integrity_check').map(row => Object.values(row)[0]);
-  const ok = result.length === 1 && result[0] === 'ok';
-  toast(ok ? 'Integrity check passed. No errors found.' : `Integrity issues: ${result.join('; ')}`, ok ? '' : 'error');
-  setStatus(ok ? 'Database is healthy' : 'Integrity errors found');
+  try {
+    const result = rowsFromExec('PRAGMA integrity_check').map(row => Object.values(row)[0]);
+    const violations = foreignKeyViolations(state.db);
+    const ok = result.length === 1 && result[0] === 'ok' && !violations.length;
+    toast(ok ? 'Integrity and foreign-key checks passed.' : `Integrity issues: ${result.filter(item => item !== 'ok').join('; ') || 'none'}; ${violations.length} broken references.`, ok ? '' : 'error');
+    setStatus(ok ? 'Database is healthy' : 'Integrity errors or broken references found');
+  } catch (error) { toast(`Integrity check failed: ${error.message}`, 'error'); }
 }
 
 async function backupDatabase() {
   if (!ensureDb()) return;
-  const file = await window.desktop.backupFile({ name: (state.fileName || 'Database').replace(/\.[^.]+$/, ''), data: Array.from(state.db.export()) });
-  if (file) toast(`Backup created: ${file}`);
+  try {
+    const file = await window.desktop.backupFile({ name: (state.fileName || 'Database').replace(/\.[^.]+$/, ''), data: Array.from(snapshotDatabase()) });
+    if (file) toast(`Backup created: ${file}`);
+  } catch (error) { toast(`Backup failed: ${error.message}`, 'error'); }
 }
 
 async function exportAccessTables() {

@@ -28,7 +28,7 @@ The installer will be in `release/`. The app icon and UI logo are generated from
 
 - Native macOS window frame, working menus, open/save panels, keyboard shortcuts, ribbon, resizable and collapsible object navigation with collapsible groups, right-click object menus, document tabs, command palette, status bar and zoom.
 - User-supplied logo in the title bar, welcome screen, File view and macOS app icon; familiar red ribbon styling, contextual object tabs, stateful button feedback and opening/closing transitions (disabled by reduced-motion settings).
-- Access-inspired start screen with Home, New, Open, searchable recent files and eight featured choices: Blank database, Contacts, Asset tracking, Students, Event management, Task management, Nutrition tracking and Charitable contributions. Inventory is under More templates. These create editable **local SQLite starter schemas**, not Access templates or `.accdb` files; they contain no sample data or prebuilt Access forms. Additional File pages cover Info, Import, Export, Options and Help.
+- Access-inspired start screen with Home, New, Open, searchable recent files and eight featured choices: Blank database, Contacts, Asset tracking, Students, Event management, Task management, Nutrition tracking and Charitable contributions. Inventory is under More templates. These create editable **local SQLite starter schemas**, not Access templates or `.accdb` files; they contain no sample data or prebuilt Access forms. Declared foreign keys in these local schemas are enforced when editing, including after saving; diagram links are visual only. The integrity tool checks for pre-existing broken references. Additional File pages cover Info, Import, Export, Options and Help.
 - Local application settings (light/dark theme, density, query result limit, action confirmation) and a per-database default table view.
 - Local SQLite-backed `.macrodb`, `.sqlite` and `.db` files; create, open, save and save-as. Internal project metadata is versioned and rejects newer unsupported versions.
 - Tables: compact datasheet and contextual Fields ribbon with working Short Text, Number, Date & Time, Yes/No and More Fields actions; explicit Datasheet/Design switcher; add fields with type/default/required options in Design View, indexes, record editing and sorting. The ribbon View menu switches between available object views, and the datasheet Click to Add menu inserts a chosen local field type. Both menus support arrow-key navigation and Escape. The datasheet also has a working first/previous/next/last/new record bar, visible-record search and filter status. SQLite does not enforce all Access type semantics; existing field changes still require manual migration.
@@ -73,7 +73,7 @@ Do not rely on this app as the only copy of important data. Back up project file
 
 ## Tests
 
-`npm run check` runs metadata and compatibility unit tests and builds the renderer. A browser-level smoke test is available using a launched Electron instance with remote debugging enabled:
+`npm run check` runs metadata, template, relationship, compatibility and other unit tests and builds the renderer. A browser-level smoke test is available using a launched Electron instance with remote debugging enabled:
 
 ```bash
 ./node_modules/.bin/electron --remote-debugging-port=9225 .
@@ -85,6 +85,7 @@ node tests/template-smoke.mjs
 node tests/form-smoke.mjs
 node tests/report-design-smoke.mjs
 node tests/layout-smoke.mjs
+node tests/relationship-smoke.mjs
 npm run build:access-writer && node tests/access-export-integration.mjs
 # Optional real-format integration test, with a fixture from mdbtools/mdbtestdata:
 ACCESS_FIXTURE=/path/to/ASampleDatabase.accdb node tests/access-import-smoke.mjs

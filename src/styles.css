@@ -270,6 +270,12 @@
   .relation-table h3 { margin: 0; padding: 7px 9px; color: oklch(98% .01 18); background: var(--accent); font-size: 12px; }
   .relation-field { padding: 5px 8px; border-top: 1px solid var(--line); font-size: 11px; }
   .relation-field .key { color: oklch(62% .14 85); margin-right: 4px; }
+  .relationship-list { width: min(760px, 100%); margin: 18px 12px; padding: 14px 18px; background: var(--surface); border: 1px solid var(--line); white-space: normal; }
+  .relationship-list h3 { margin: 12px 0 7px; font-size: 13px; }
+  .relationship-list p { margin: 6px 0; font-size: 12px; line-height: 1.45; }
+  .relationship-list small, .relationship-note { color: var(--muted); }
+  .relationship-list .relationship-note { margin-top: 15px; }
+  .relationship-list .relationship-warning { color: var(--danger); font-weight: 600; }
 
   .property-pane { width: 250px; border-left: 1px solid var(--line-strong); background: var(--surface-2); }
   .statusbar { display: flex; justify-content: space-between; align-items: center; padding: 0 7px; background: var(--surface-2); border-top: 1px solid var(--line-strong); font-size: 11px; color: var(--muted); }
