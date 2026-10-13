@@ -31,9 +31,9 @@ The installer will be in `release/`. The app icon and UI logo are generated from
 - File pages for Info, New, Open, Import, Export, Options and Help; recent files and Contacts, Inventory and Tasks templates.
 - Local application settings (light/dark theme, density, query result limit, action confirmation) and a per-database default table view.
 - Local SQLite-backed `.macrodb`, `.sqlite` and `.db` files; create, open, save and save-as. Internal project metadata is versioned and rejects newer unsupported versions.
-- Tables: create fields using SQLite types and constraints, inspect schema, add fields, add indexes, edit cells and records, sort and delete records.
+- Tables: explicit Datasheet/Design view switcher; create fields using SQLite types and constraints, inspect schema, add fields with type/default/required options in Design View, add indexes, edit cells and records, sort and delete records. Existing field type and constraint changes still require manual SQLite migration.
 - Queries: SQLite SQL editor, saved queries, results grid, basic single-table visual field picker, confirmation for action SQL. Optional Access-style SQL subset with `SELECT TOP`, `&` concatenation, `Left`, `Right`, `Mid`, `Nz`, `IIf`, `InStr`, `Date`, `Now` and `Len`; the original SQL and its dialect are saved with each query.
-- Generated single-record forms with a saved Design View (caption, control type, visibility, required setting, ordering), record entry/navigation, and read-only printable tabular reports with PDF export.
+- Generated single-record forms with a saved Design View (caption, control type, visibility, required setting, ordering), record entry/navigation. Reports have a saved Design View for title, column visibility/order and sorting plus a printable preview and PDF export; grouping and calculated controls are not supported.
 - Relationship diagram with **metadata-only** relationship declarations, not enforced foreign keys. For enforced constraints, create SQLite foreign keys using SQL.
 - CSV import/export; best-effort `.mdb` and `.accdb` **table data import** using `mdbtools`, with a saved conversion report listing imported tables, row counts and known losses.
 - Backup snapshot, integrity check and compact (`VACUUM`).
@@ -79,6 +79,7 @@ node tests/smoke.mjs
 node tests/template-smoke.mjs
 # On another fresh test instance:
 node tests/form-smoke.mjs
+node tests/report-design-smoke.mjs
 # Optional real-format integration test, with a fixture from mdbtools/mdbtestdata:
 ACCESS_FIXTURE=/path/to/ASampleDatabase.accdb node tests/access-import-smoke.mjs
 ```

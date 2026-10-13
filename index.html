@@ -37,7 +37,7 @@
     <section id="ribbon" class="ribbon" aria-label="Command ribbon">
       <div class="ribbon-page active" data-page="home">
         <div class="command-group">
-          <button class="command large" data-action="view"><span class="command-icon">▦</span><span>View</span></button>
+          <button class="command large" data-action="view" title="Switch to the next available view"><span class="command-icon">▦</span><span id="homeViewLabel">View</span></button>
           <div class="command-stack">
             <button class="command" data-action="save"><span>▣</span> Save</button>
             <button class="command" data-action="refresh"><span>↻</span> Refresh</button>
@@ -68,7 +68,7 @@
       <div class="ribbon-page" data-page="create">
         <div class="command-group">
           <button class="command large" data-action="create-table"><span class="command-icon">▦</span><span>Table</span></button>
-          <button class="command large" data-action="create-table"><span class="command-icon">⚒</span><span>Table Design</span></button><span class="group-label">Tables</span>
+          <button class="command large" data-action="create-table-design"><span class="command-icon">⚒</span><span>Table Design</span></button><span class="group-label">Tables</span>
         </div>
         <div class="command-group">
           <button class="command large" data-action="query-design"><span class="command-icon">⌘</span><span>Query Design</span></button>
@@ -112,7 +112,7 @@
         <div class="command-group"><button class="command large" data-action="new-form-record"><span class="command-icon">＋</span><span>New Record</span></button><button class="command large" data-action="save-form-record"><span class="command-icon">▣</span><span>Save Record</span></button><button class="command large" data-action="form-design"><span class="command-icon">⚒</span><span>Form Design</span></button><button class="command large" data-action="find-record"><span class="command-icon">⌕</span><span>Find</span></button><span class="group-label">Form Tools</span></div>
       </div>
       <div class="ribbon-page" data-page="report-tools">
-        <div class="command-group"><button class="command large" data-action="print"><span class="command-icon">▥</span><span>Print</span></button><button class="command large" data-action="export-pdf"><span class="command-icon">PDF</span><span>Export PDF</span></button><button class="command large" data-action="export-csv"><span class="command-icon">CSV</span><span>Export Data</span></button><span class="group-label">Report Tools</span></div>
+        <div class="command-group"><button class="command large" data-action="report-design"><span class="command-icon">⚒</span><span>Design View</span></button><button class="command large" data-action="print"><span class="command-icon">▥</span><span>Print</span></button><button class="command large" data-action="export-pdf"><span class="command-icon">PDF</span><span>Export PDF</span></button><button class="command large" data-action="export-csv"><span class="command-icon">CSV</span><span>Export Data</span></button><span class="group-label">Report Tools</span></div>
       </div>
     </section>
 
@@ -143,7 +143,7 @@
       <aside id="propertyPane" class="property-pane hidden"></aside>
     </main>
 
-    <footer class="statusbar"><span id="statusText">Ready</span><span class="status-right"><span id="recordStatus"></span><button data-action="datasheet-view" title="Datasheet view">▦</button><button data-action="design-view" title="Design view">⚒</button><input aria-label="Zoom" type="range" min="70" max="150" value="100" id="zoomRange" /><span id="zoomLabel">100%</span></span></footer>
+    <footer class="statusbar"><span id="statusText">Ready</span><span class="status-right"><span id="recordStatus"></span><span id="viewStatus" aria-label="Available views">No document</span><input aria-label="Zoom" type="range" min="70" max="150" value="100" id="zoomRange" /><span id="zoomLabel">100%</span></span></footer>
   </div>
 
   <div id="backstage" class="backstage hidden" role="dialog" aria-label="File menu">

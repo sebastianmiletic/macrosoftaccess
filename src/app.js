@@ -6,6 +6,7 @@ import { createImportReport, uniqueHeaders } from './compatibility.js';
 import { defaultFormSettings, normalizeFormSettings, FORM_CONTROL_TYPES } from './form-model.js';
 import { fieldMapping } from './access-schema.js';
 import { translateAccessSql, registerAccessFunctions } from './access-sql.js';
+import { normalizeReportSettings } from './report-model.js';
 
 const SQL = await initSqlJs({ locateFile: () => wasmUrl });
 
@@ -354,8 +355,9 @@ function showWelcome(show = true) {
   }
 }
 
-function createTable() {
+function createTable(view = 'datasheet') {
   if (!ensureDb()) return;
+  state.newTableView = view;
   $('#tableName').value = nextName('Table', state.objects.tables);
   $('#tableDialog').showModal();
   setTimeout(() => $('#tableName').select(), 0);
@@ -393,6 +395,7 @@ function submitTable(event) {
     markDirty();
     refreshObjects();
     openObject('table', name);
+    if (state.newTableView === 'design') setTableView('design');
     toast(`Table “${name}” created`);
   } catch (error) { toast(error.message, 'error'); }
 }
@@ -428,6 +431,7 @@ function updateContextualRibbon() {
 function renderTabs() {
   updateContextualRibbon();
   $('#documentTabs').innerHTML = state.tabs.map(tab => `<button class="document-tab ${state.activeTab === tab.id ? 'active' : ''}" data-tab-id="${escapeHtml(tab.id)}" role="tab"><span>${tab.type === 'table' ? '▦' : tab.type === 'query' ? '⌘' : tab.type === 'form' ? '▣' : '▥'}</span><span class="tab-name">${escapeHtml(tab.name)}</span><span class="tab-close" data-close-tab="${escapeHtml(tab.id)}">×</span></button>`).join('');
+  renderViewControls();
 }
 
 function closeTab(id) {
@@ -443,45 +447,80 @@ function renderActiveTab() {
   if (tab.type === 'table') tab.view === 'design' ? renderTableDesign(tab.name) : renderDatasheet(tab.name);
   else if (tab.type === 'query') renderQuery(tab.name);
   else if (tab.type === 'form') tab.view === 'design' ? renderFormDesign(tab.name) : renderForm(tab.name);
-  else if (tab.type === 'report') renderReport(tab.name);
+  else if (tab.type === 'report') tab.view === 'design' ? renderReportDesign(tab.name) : renderReport(tab.name);
   else if (tab.type === 'queryDesign') renderQueryDesigner();
   else if (tab.type === 'relationships') showRelationships();
   else if (tab.type === 'databaseInfo') showDatabaseInfo();
   else if (tab.type === 'compatibility') showCompatibilityReport();
+  renderViewControls();
 }
 
-function setTableView(view) {
+function availableViews(tab) {
+  if (tab?.type === 'table') return [['datasheet', 'Datasheet View'], ['design', 'Table Design View']];
+  if (tab?.type === 'form') return [['form', 'Form View'], ['design', 'Form Design View']];
+  if (tab?.type === 'report') return [['report', 'Report View'], ['design', 'Report Design View']];
+  if (tab?.type === 'query') return [['sql', 'SQL View']];
+  if (tab?.type === 'queryDesign') return [['queryDesign', 'Query Design View']];
+  return [];
+}
+
+function renderViewControls() {
   const tab = state.tabs.find(item => item.id === state.activeTab);
-  if (!tab || tab.type !== 'table') return;
+  const views = availableViews(tab);
+  const status = $('#viewStatus');
+  if (!views.length) status.textContent = 'No document view';
+  else if (views.length === 1) status.textContent = views[0][1];
+  else status.innerHTML = `<label for="activeViewSelect">View</label> <select id="activeViewSelect" aria-label="Document view">${views.map(([value, label]) => `<option value="${value}" ${tab.view === value || !tab.view && value === views[0][0] ? 'selected' : ''}>${label}</option>`).join('')}</select>`;
+  $('#homeViewLabel').textContent = views.length > 1 ? views.find(([value]) => value === (tab.view || views[0][0]))?.[1].replace(' View', '') || 'View' : 'View';
+  $('[data-action="view"]').disabled = views.length < 2;
+}
+
+function setActiveView(view) {
+  const tab = state.tabs.find(item => item.id === state.activeTab);
+  if (!availableViews(tab).some(([value]) => value === view)) return;
   tab.view = view;
   renderActiveTab();
 }
 
+function setTableView(view) { setActiveView(view); }
+
 function switchView() {
   const tab = state.tabs.find(item => item.id === state.activeTab);
-  if (tab?.type === 'form') return setFormView(tab.view === 'design' ? 'form' : 'design');
-  if (!tab || tab.type !== 'table') return;
-  setTableView(tab.view === 'design' ? 'datasheet' : 'design');
+  const views = availableViews(tab);
+  if (views.length < 2) return;
+  const next = (views.findIndex(([value]) => value === (tab.view || views[0][0])) + 1) % views.length;
+  setActiveView(views[next][0]);
 }
 
 function renderTableDesign(table) {
   const columns = getColumns(table);
   const indexes = rowsFromExec(`PRAGMA index_list(${quoteId(table)})`);
-  $('#documentSurface').innerHTML = `<div class="design-view" data-design-table="${escapeHtml(table)}"><div class="design-toolbar"><button class="tool-button primary" data-action="add-field">＋ Add Field</button><button class="tool-button" data-action="create-index">⌘ Create Index</button><button class="tool-button" data-action="view">▦ Datasheet View</button><span style="flex:1"></span><strong>${escapeHtml(table)}</strong></div><table class="schema-grid"><thead><tr><th></th><th>Field Name</th><th>Data Type</th><th>Required</th><th>Default Value</th></tr></thead><tbody>${columns.map(c => `<tr><td>${c.pk ? '◆' : ''}</td><td>${escapeHtml(c.name)}</td><td>${escapeHtml(c.type || 'ANY')}</td><td>${c.notnull ? 'Yes' : 'No'}</td><td>${escapeHtml(c.dflt_value || '')}</td></tr>`).join('')}</tbody></table><dl class="schema-properties"><h3>Table Properties</h3><dt>Table name</dt><dd>${escapeHtml(table)}</dd><dt>Fields</dt><dd>${columns.length}</dd><dt>Indexes</dt><dd>${indexes.map(i => escapeHtml(i.name)).join(', ') || 'None'}</dd><dt>Storage engine</dt><dd>SQLite</dd><dt>Schema SQL</dt><dd><code>${escapeHtml(rowsFromExec("SELECT sql FROM sqlite_master WHERE type='table' AND name=?", [table])[0]?.sql || '')}</code></dd></dl></div>`;
+  $('#documentSurface').innerHTML = `<div class="design-view" data-design-table="${escapeHtml(table)}"><div class="design-toolbar"><button class="tool-button" data-action="create-index">⌘ Create Index</button><button class="tool-button" data-action="view">▦ Datasheet View</button><span style="flex:1"></span><strong>${escapeHtml(table)}</strong></div><table class="schema-grid"><thead><tr><th></th><th>Field Name</th><th>Data Type</th><th>Required</th><th>Default Value</th></tr></thead><tbody>${columns.map(c => `<tr><td>${c.pk ? '◆' : ''}</td><td>${escapeHtml(c.name)}</td><td>${escapeHtml(c.type || 'ANY')}</td><td>${c.notnull ? 'Yes' : 'No'}</td><td>${escapeHtml(c.dflt_value || '')}</td></tr>`).join('')}</tbody></table><section class="add-field-panel"><h3>Add a field</h3><div class="add-field-controls"><label>Field name<input id="newFieldName" maxlength="120" placeholder="NewField"></label><label>Data type<select id="newFieldType"><option>TEXT</option><option>INTEGER</option><option>REAL</option><option>NUMERIC</option><option>DATE</option><option>DATETIME</option><option>BOOLEAN</option><option>BLOB</option></select></label><label>Default value<input id="newFieldDefault" placeholder="Optional"></label><label class="inline-check"><input type="checkbox" id="newFieldRequired"> Required</label><button class="tool-button primary" data-action="commit-field">Add field</button></div><p>Existing field types and constraints cannot be changed here. SQLite requires a table rebuild for those changes.</p></section><dl class="schema-properties"><h3>Table Properties</h3><dt>Table name</dt><dd>${escapeHtml(table)}</dd><dt>Fields</dt><dd>${columns.length}</dd><dt>Indexes</dt><dd>${indexes.map(i => escapeHtml(i.name)).join(', ') || 'None'}</dd><dt>Storage engine</dt><dd>SQLite</dd><dt>Schema SQL</dt><dd><code>${escapeHtml(rowsFromExec("SELECT sql FROM sqlite_master WHERE type='table' AND name=?", [table])[0]?.sql || '')}</code></dd></dl></div>`;
   setStatus('Table Design View', `${columns.length} fields`);
 }
 
 function addField() {
-  const table = $('.design-view')?.dataset.designTable || state.tabs.find(tab => tab.id === state.activeTab && tab.type === 'table')?.name;
+  const tab = state.tabs.find(item => item.id === state.activeTab);
+  if (tab?.type !== 'table') return toast('Open a table to add a field.', 'error');
+  setTableView('design');
+  $('#newFieldName')?.focus();
+}
+
+function commitField() {
+  const table = $('.design-view')?.dataset.designTable;
   if (!table) return;
-  const definition = window.prompt('New field definition (example: Email TEXT NOT NULL):', 'NewField TEXT');
-  if (!definition) return;
-  const match = definition.trim().match(/^([\p{L}_][\p{L}\p{N}_ ]*)\s+(.+)$/u);
-  if (!match) return toast('Enter a field name followed by a data type.', 'error');
+  const name = $('#newFieldName').value.trim();
+  const type = $('#newFieldType').value;
+  const defaultValue = $('#newFieldDefault').value;
+  const required = $('#newFieldRequired').checked;
+  if (!/^[\p{L}_][\p{L}\p{N}_ ]*$/u.test(name)) return toast('Enter a valid field name (letters, numbers, spaces and underscores).', 'error');
+  if (getColumns(table).some(column => column.name.toLowerCase() === name.toLowerCase())) return toast('A field with this name already exists.', 'error');
+  const defaultSql = defaultValue !== '' ? ` DEFAULT '${defaultValue.replaceAll("'", "''")}'` : '';
   try {
-    state.db.run(`ALTER TABLE ${quoteId(table)} ADD COLUMN ${quoteId(match[1])} ${match[2]}`);
-    markDirty(); setTableView('design'); toast(`Field “${match[1]}” added`);
-  } catch (error) { toast(error.message, 'error'); }
+    state.db.run(`ALTER TABLE ${quoteId(table)} ADD COLUMN ${quoteId(name)} ${type}${required ? ' NOT NULL' : ''}${defaultSql}`);
+    markDirty(); renderTableDesign(table); renderViewControls(); toast(`Field “${name}” added`);
+    $('#newFieldName').focus();
+  } catch (error) { toast(`Could not add field: ${error.message}`, 'error'); }
 }
 
 function createIndex() {
@@ -779,19 +818,49 @@ function newFormRecord() {
 function createReport() {
   if (!ensureDb() || !state.objects.tables.length) return toast('Create a table first.', 'error');
   const table = promptChoice('Create a report for which table?', state.objects.tables);
-  if (!table) return;
+  if (table) createReportFor(table);
+}
+
+function createReportFor(table) {
   const name = nextName(`${table} Report `, state.objects.reports);
   state.db.run("INSERT INTO _mda_objects(type,name,source) VALUES('report',?,?)", [name, table]);
   markDirty(); refreshObjects(); openObject('report', name);
 }
 
+function reportSettings(item) {
+  return normalizeReportSettings(item.settings, getColumns(item.source), item.name);
+}
+
+function saveReportDesign(name, settings) {
+  state.db.run("UPDATE _mda_objects SET settings=? WHERE type='report' AND name=?", [JSON.stringify(settings), name]);
+  markDirty(); refreshObjects();
+  setStatus('Report design updated. Save the database to keep changes.');
+}
+
+function renderReportDesign(name) {
+  const item = state.objects.reports.find(report => report.name === name);
+  if (!item) return showError(new Error('Report not found'));
+  const columns = getColumns(item.source).map(column => column.name);
+  const settings = reportSettings(item);
+  $('#documentSurface').innerHTML = `<section class="report-designer" data-report-name="${escapeHtml(name)}"><div class="design-toolbar"><strong>Report Design · ${escapeHtml(name)}</strong><span style="flex:1"></span><button class="tool-button" data-action="report-view">▥ Report View</button></div><div class="report-designer-body"><label>Report title<input data-report-property="title" maxlength="120" value="${escapeHtml(settings.title)}"></label><label>Sort by<select data-report-property="sortField"><option value="">Source order</option>${columns.map(column => `<option value="${escapeHtml(column)}" ${settings.sortField === column ? 'selected' : ''}>${escapeHtml(column)}</option>`).join('')}</select></label><label class="inline-check"><input type="checkbox" data-report-property="sortDescending" ${settings.sortDescending ? 'checked' : ''}> Descending</label><h3>Columns</h3><p>Select columns and use the arrows to set their order.</p><div class="report-column-list">${columns.map(column => `<div class="report-column-row" data-report-column="${escapeHtml(column)}"><label class="inline-check"><input type="checkbox" data-report-visible ${settings.columns.includes(column) ? 'checked' : ''}> ${escapeHtml(column)}</label><button class="tool-button" data-report-move="up" aria-label="Move ${escapeHtml(column)} up">↑</button><button class="tool-button" data-report-move="down" aria-label="Move ${escapeHtml(column)} down">↓</button></div>`).join('')}</div><p class="compat-note">Layouts apply to local reports only. This is not an Access report designer: grouping, calculated controls, sections and imported Access reports are not supported.</p></div></section>`;
+  // Visible columns appear first, in saved display order. Hidden fields remain selectable.
+  const list = $('.report-column-list');
+  [...settings.columns, ...columns.filter(column => !settings.columns.includes(column))].forEach(column => {
+    const row = $$('.report-column-row', list).find(element => element.dataset.reportColumn === column);
+    if (row) list.append(row);
+  });
+  setStatus('Report Design View', `${settings.columns.length} visible columns`);
+}
+
 function renderReport(name) {
   const item = state.objects.reports.find(r => r.name === name);
   if (!item) return showError(new Error('Report not found'));
-  const columns = getColumns(item.source).map(c => c.name);
-  const rows = rowsFromExec(`SELECT * FROM ${quoteId(item.source)} LIMIT 500`);
+  const settings = reportSettings(item);
+  const columns = settings.columns;
+  const order = settings.sortField ? ` ORDER BY ${quoteId(settings.sortField)} ${settings.sortDescending ? 'DESC' : 'ASC'}` : '';
+  const rows = rowsFromExec(`SELECT * FROM ${quoteId(item.source)}${order} LIMIT 500`);
   state.lastResults = { name, columns, rows };
-  $('#documentSurface').innerHTML = `<article class="report-view"><header class="report-header"><h1>${escapeHtml(name)}</h1><div class="report-meta">${escapeHtml(item.source)} · Generated ${new Date().toLocaleString()}</div></header><table class="report-table"><thead><tr>${columns.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${columns.map(c => `<td>${escapeHtml(row[c])}</td>`).join('')}</tr>`).join('')}</tbody></table></article>`;
+  $('#documentSurface').innerHTML = `<article class="report-view"><header class="report-header"><h1>${escapeHtml(settings.title)}</h1><div class="report-meta">${escapeHtml(item.source)} · Generated ${new Date().toLocaleString()} · First 500 records</div><button class="tool-button" data-action="report-design">⚒ Design View</button></header>${columns.length ? `<table class="report-table"><thead><tr>${columns.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${columns.map(c => `<td>${escapeHtml(row[c])}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '<p>No columns selected. Open Design View to choose report columns.</p>'}</article>`;
   setStatus('Report View', `${rows.length} records`);
 }
 
@@ -899,11 +968,12 @@ function handleObjectContext(action) {
   if (!selected) return;
   const { type, name } = selected;
   if (action === 'open') openObject(type, name);
-  if (action === 'design' && type === 'table') { openObject(type, name); setTableView('design'); }
+  if (action === 'design' && ['table', 'form', 'report'].includes(type)) { openObject(type, name); setActiveView('design'); }
   if (action === 'rename') renameObject(type, name);
   if (action === 'delete') deleteObject(type, name);
   if (action === 'export' && type === 'table') { openObject(type, name); exportCsv(); }
   if (action === 'form' && type === 'table') createFormFor(name);
+  if (action === 'report' && type === 'table') createReportFor(name);
   $('#contextMenu').classList.add('hidden');
 }
 
@@ -1058,19 +1128,20 @@ async function performAction(action) {
     'template-contacts': () => createTemplate('contacts'), 'template-inventory': () => createTemplate('inventory'), 'template-tasks': () => createTemplate('tasks'),
     options: () => showBackstage('options'), 'import-database': chooseAccessImport,
     'close-database': closeDatabase, 'close-file': closeBackstage,
-    'create-table': createTable, 'new-record': () => addRecord($('.datasheet')?.dataset.table),
+    'create-table': () => createTable(), 'create-table-design': () => createTable('design'), 'new-record': () => addRecord($('.datasheet')?.dataset.table),
     'delete-record': deleteSelectedRecord, delete: deleteCurrent, refresh: renderActiveTab,
     'sql-query': () => { if (ensureDb()) renderSqlWorkspace('SQL Query'); },
     'run-query': runQuery, 'save-query': saveCurrentQuery, 'preview-sql': previewTranslatedSql, 'query-design': renderQueryDesigner,
     'build-query': buildVisualQuery, 'create-form': createForm, 'create-report': createReport,
     'form-design': () => setFormView('design'), 'form-view': () => setFormView('form'),
+    'report-design': () => setActiveView('design'), 'report-view': () => setActiveView('report'),
     'save-form-record': saveFormRecord, 'new-form-record': newFormRecord,
     'first-record': () => moveFormRecord('first'), 'prev-record': () => moveFormRecord('prev'),
     'next-record': () => moveFormRecord('next'), 'last-record': () => moveFormRecord('last'),
     relationships: showRelationships, 'add-relationship': addRelationship, compact: compactDatabase,
     'database-info': showDatabaseInfo, 'compatibility-report': showCompatibilityReport,
     'integrity-check': integrityCheck, backup: backupDatabase,
-    'add-field': addField, 'create-index': createIndex,
+    'add-field': addField, 'commit-field': commitField, 'create-index': createIndex,
     'import-csv': importCsv, 'export-csv': exportCsv, 'export-pdf': exportPdf,
     print: () => window.desktop.print(), 'command-palette': openCommandPalette, view: switchView,
     'datasheet-view': () => setTableView('datasheet'), 'design-view': () => setTableView('design'),
@@ -1176,6 +1247,19 @@ document.addEventListener('click', event => {
     const from = Number(move.closest('[data-control-index]').dataset.controlIndex);
     reorderFormControl(designer.dataset.formName, from, from + (move.dataset.reorder === 'up' ? -1 : 1));
   }
+  const reportMove = event.target.closest('[data-report-move]');
+  if (reportMove) {
+    const row = reportMove.closest('.report-column-row');
+    const neighbor = reportMove.dataset.reportMove === 'up' ? row.previousElementSibling : row.nextElementSibling;
+    if (neighbor) {
+      if (reportMove.dataset.reportMove === 'up') neighbor.before(row); else neighbor.after(row);
+      const designer = row.closest('.report-designer');
+      const item = state.objects.reports.find(report => report.name === designer.dataset.reportName);
+      const settings = reportSettings(item);
+      settings.columns = $$('.report-column-row', designer).filter(entry => entry.querySelector('[data-report-visible]').checked).map(entry => entry.dataset.reportColumn);
+      saveReportDesign(item.name, settings);
+    }
+  }
   const action = event.target.closest('[data-action]')?.dataset.action;
   if (action) performAction(action);
   const object = event.target.closest('[data-object-type]');
@@ -1197,7 +1281,7 @@ document.addEventListener('contextmenu', event => {
   renderObjectTree($('#objectSearch').value);
   const menu = $('#contextMenu');
   const item = (label, action) => `<button role="menuitem" data-context-action="${action}">${label}</button>`;
-  menu.innerHTML = item('Open', 'open') + (state.selectedObject.type === 'table' ? item('Design View', 'design') + item('Create Form', 'form') + item('Export CSV', 'export') : '') + '<hr>' + item('Rename…', 'rename') + item('Delete…', 'delete');
+  menu.innerHTML = item('Open', 'open') + (['table', 'form', 'report'].includes(state.selectedObject.type) ? item('Design View', 'design') : '') + (state.selectedObject.type === 'table' ? item('Create Form', 'form') + item('Create Report', 'report') + item('Export CSV', 'export') : '') + '<hr>' + item('Rename…', 'rename') + item('Delete…', 'delete');
   menu.classList.remove('hidden');
   menu.style.left = `${Math.min(event.clientX, window.innerWidth - 185)}px`;
   menu.style.top = `${Math.min(event.clientY, window.innerHeight - menu.offsetHeight - 10)}px`;
@@ -1236,6 +1320,16 @@ document.addEventListener('change', event => {
     }
     saveFormDesign(item.name, settings);
   }
+  const reportDesigner = event.target.closest('.report-designer');
+  if (reportDesigner && (event.target.matches('[data-report-property]') || event.target.matches('[data-report-visible]'))) {
+    const item = state.objects.reports.find(report => report.name === reportDesigner.dataset.reportName);
+    if (!item) return;
+    const settings = reportSettings(item);
+    if (event.target.matches('[data-report-visible]')) settings.columns = $$('.report-column-row', reportDesigner).filter(row => row.querySelector('[data-report-visible]').checked).map(row => row.dataset.reportColumn);
+    else settings[event.target.dataset.reportProperty] = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
+    saveReportDesign(item.name, settings);
+  }
+  if (event.target.matches('#activeViewSelect')) setActiveView(event.target.value);
   if (event.target.matches('[data-query-dialect]')) {
     const tab = state.tabs.find(item => item.id === state.activeTab);
     if (tab) tab.dialect = event.target.value;
@@ -1294,3 +1388,4 @@ window.desktop.onCommand(command => performAction(command));
 refreshObjects();
 updateFileInfo();
 setStatus('Ready');
+renderViewControls();
