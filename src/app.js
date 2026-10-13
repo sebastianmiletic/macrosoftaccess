@@ -9,6 +9,8 @@ import { translateAccessSql, registerAccessFunctions } from './access-sql.js';
 import { normalizeReportSettings } from './report-model.js';
 import { accessExportPayload } from './access-export.js';
 import { templates, featuredTemplates } from './templates.js';
+import { DEFAULT_SETTINGS, normalizeSettings } from './settings.js';
+import { inspectSql } from './sql-policy.js';
 import { enableForeignKeys, exportEnforcingForeignKeys, foreignKeyViolations, declaredRelationships } from './relationships.js';
 
 const SQL = await initSqlJs({ locateFile: () => wasmUrl });
@@ -30,7 +32,7 @@ const state = {
   sort: null,
   importReport: null,
   backstagePage: 'info',
-  settings: { theme: 'light', density: 'compact', confirmActions: true, rows: 1000, sqlDialect: 'sqlite' }
+  settings: { ...DEFAULT_SETTINGS }
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -38,7 +40,7 @@ const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[c]);
 const quoteId = (name) => `"${String(name).replaceAll('"', '""')}"`;
 const appTitle = 'Macrosoft Access';
-try { Object.assign(state.settings, JSON.parse(localStorage.getItem('macrosoft-access-settings') || '{}')); } catch { /* Invalid old preferences. */ }
+try { state.settings = normalizeSettings(JSON.parse(localStorage.getItem('macrosoft-access-settings') || '{}')); } catch { state.settings = normalizeSettings(null); }
 document.documentElement.dataset.theme = state.settings.theme;
 document.documentElement.dataset.density = state.settings.density;
 let collapsedObjectGroups = new Set();
@@ -143,6 +145,7 @@ async function renderBackstage(page = 'info') {
   $$('[data-file-page]').forEach(button => button.classList.toggle('active', button.dataset.filePage === page));
   const content = $('#backstageContent');
   const row = (icon, title, description, action) => `<div class="file-action-row"><span>${icon}</span><div><strong>${title}</strong><p>${description}</p></div><button class="secondary-button" data-action="${action}">Open</button></div>`;
+  const templateRow = (icon, title, description, action) => `<div class="file-action-row" data-template-search="${escapeHtml(`${title} ${description}`.toLocaleLowerCase())}"><span>${icon}</span><div><strong>${escapeHtml(title)}</strong><p>${escapeHtml(description)}</p></div><button class="secondary-button" data-action="${action}" aria-label="Create ${escapeHtml(title)}">Create</button></div>`;
   const recentRows = recent => recent.length ? recent.map(item => `<div class="recent-row"><button data-recent-path="${escapeHtml(item.path)}" ${item.available ? '' : 'disabled'}><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.path)}${item.available ? '' : ' · Unavailable'}</small></button><button class="recent-remove" data-remove-recent="${escapeHtml(item.path)}" title="Remove from recent">×</button></div>`).join('') : '<p>No recent databases yet. Create one or browse for a local file.</p>';
   if (page === 'home') {
     content.innerHTML = `<div class="file-home"><h1>Good ${new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 18 ? 'afternoon' : 'evening'}</h1><section class="home-new"><h2>New</h2><div class="home-templates"><button data-action="new"><span class="template-symbol">▤</span><strong>Blank database</strong></button>${featuredTemplates.map(template => `<button data-action="template-${template.kind}" title="${escapeHtml(template.description)}"><span class="template-symbol">${template.icon}</span><strong>${escapeHtml(template.title)}</strong></button>`).join('')}</div><button class="home-more" data-file-page="new">More templates →</button></section><section class="home-recent"><div class="home-recent-header"><h2>Recent databases</h2><button class="secondary-button" data-action="open">Browse files…</button></div><label class="home-search">⌕ <input id="homeRecentSearch" type="search" aria-label="Search recent databases" placeholder="Search recent databases"></label><div id="recentList" class="recent-list">Loading recent files…</div></section><p class="compat-note">Projects use local SQLite files. Access table data can be imported or exported to a new .accdb, but existing Access files cannot be edited in place.</p><p id="buildVersion" class="build-version" aria-label="App version">Version loading…</p></div>`;
@@ -154,7 +157,7 @@ async function renderBackstage(page = 'info') {
   } else if (page === 'info') {
     content.innerHTML = `<h1>Database information</h1><div class="file-info"><img class="file-logo" src="${logoUrl}" alt="Macrosoft Access logo" /><div><h2>${escapeHtml(state.fileName || 'No database open')}</h2><p>${escapeHtml(state.filePath || 'Create or open a database to begin.')}</p></div></div><div class="file-actions">${row('ⓘ', 'Properties', 'Tables, records, file size and storage engine.', 'database-info')}${row('◎', 'Compatibility report', 'See preserved, converted and unsupported Access objects.', 'compatibility-report')}${row('⧉', 'Back up database', 'Save a separate portable snapshot.', 'backup')}${row('✓', 'Check integrity', 'Inspect SQLite pages and indexes.', 'integrity-check')}${row('◫', 'Compact database', 'Reclaim unused storage.', 'compact')}</div><p class="compat-note">Access .mdb/.accdb table data can be imported with mdbtools. Projects use SQLite, not the Microsoft Access engine. Export can create a separate .accdb with table data only.</p>`;
   } else if (page === 'new') {
-    content.innerHTML = `<h1>New</h1><p class="page-lede">Start with a blank database or a ready-to-edit local template.</p><div class="template-list">${row('▦', 'Blank database', 'Create your own tables and relationships.', 'new')}${templates.map(template => row(template.icon, template.title, template.description, `template-${template.kind}`)).join('')}</div>`;
+    content.innerHTML = `<h1>New</h1><p class="page-lede">Start with a blank database or a ready-to-edit local template. Templates contain empty SQLite tables, not Access objects.</p><label class="template-search">Search templates <input id="templateSearch" type="search" placeholder="Name or purpose" autocomplete="off"></label><div class="template-list">${templateRow('▦', 'Blank database', 'Create your own tables and relationships.', 'new')}${templates.map(template => templateRow(template.icon, template.title, template.description, `template-${template.kind}`)).join('')}</div><p id="templateNoResults" class="template-no-results" hidden>No matching templates. Try another word.</p>`;
   } else if (page === 'open') {
     content.innerHTML = `<h1>Open</h1><p class="page-lede"><button class="primary-button" data-action="open">Browse files…</button></p><h2>Recent databases</h2><div id="recentList" class="recent-list">Loading recent files…</div>`;
     try {
@@ -168,7 +171,21 @@ async function renderBackstage(page = 'info') {
     content.innerHTML = `<h1>Export</h1><p class="page-lede">Export the current table, query result or report.</p><div class="file-actions">${row('CSV', 'CSV', 'Export current result data as comma-separated values.', 'export-csv')}${row('PDF', 'PDF', 'Save the active report or document as a PDF.', 'export-pdf')}${row('▦', 'Access .accdb table data', 'Create a new Access 2016 file containing local tables and values only; Java 17+ required.', 'export-access')}${row('⧉', 'Database backup', 'Export a complete SQLite database snapshot.', 'backup')}</div>`;
   } else if (page === 'options') {
     const s = state.settings;
-    content.innerHTML = `<h1>Options</h1><p class="page-lede">Application preferences are saved on this Mac.</p><div class="settings-group"><h2>Appearance</h2><label>Theme<select data-setting="theme"><option value="light" ${s.theme === 'light' ? 'selected' : ''}>Light</option><option value="dark" ${s.theme === 'dark' ? 'selected' : ''}>Dark</option></select></label><label>Interface density<select data-setting="density"><option value="compact" ${s.density === 'compact' ? 'selected' : ''}>Compact</option><option value="comfortable" ${s.density === 'comfortable' ? 'selected' : ''}>Comfortable</option></select></label></div><div class="settings-group"><h2>Editing</h2><label>Query result limit<select data-setting="rows"><option value="100" ${s.rows === 100 ? 'selected' : ''}>100 rows</option><option value="1000" ${s.rows === 1000 ? 'selected' : ''}>1,000 rows</option><option value="10000" ${s.rows === 10000 ? 'selected' : ''}>10,000 rows</option></select></label><label class="check-setting"><input type="checkbox" data-setting="confirmActions" ${s.confirmActions ? 'checked' : ''}> Confirm SQL that modifies data or schema</label></div><div class="settings-group"><h2>Queries</h2><label>Default SQL dialect<select data-setting="sqlDialect"><option value="sqlite" ${s.sqlDialect !== 'access' ? 'selected' : ''}>SQLite</option><option value="access" ${s.sqlDialect === 'access' ? 'selected' : ''}>Access-style subset</option></select></label><p>Access-style mode translates selected expressions and SELECT TOP. It does not implement the full Access SQL dialect.</p></div><div class="settings-group"><h2>Current database</h2><label>Default table view<select data-db-setting="defaultTableView" ${state.db ? '' : 'disabled'}><option value="datasheet" ${databaseSetting('defaultTableView', 'datasheet') === 'datasheet' ? 'selected' : ''}>Datasheet</option><option value="design" ${databaseSetting('defaultTableView', 'datasheet') === 'design' ? 'selected' : ''}>Design</option></select></label><p>${state.db ? 'Saved inside this database.' : 'Open a database to edit its settings.'}</p></div>`;
+    content.innerHTML = `<h1>Options</h1><p class="page-lede">Application preferences are saved on this Mac.</p>
+      <div class="settings-group"><h2>Appearance and workspace</h2>
+        <label>Theme<select data-setting="theme"><option value="light" ${s.theme === 'light' ? 'selected' : ''}>Light</option><option value="dark" ${s.theme === 'dark' ? 'selected' : ''}>Dark</option></select></label>
+        <label>Interface density<select data-setting="density"><option value="compact" ${s.density === 'compact' ? 'selected' : ''}>Compact</option><option value="comfortable" ${s.density === 'comfortable' ? 'selected' : ''}>Comfortable</option></select></label>
+        <label>Navigation pane<select data-setting="navigationPane"><option value="expanded" ${s.navigationPane === 'expanded' ? 'selected' : ''}>Expanded</option><option value="collapsed" ${s.navigationPane === 'collapsed' ? 'selected' : ''}>Collapsed</option></select></label>
+      </div><div class="settings-group"><h2>Editing</h2>
+        <label>Displayed result rows<select data-setting="rows"><option value="100" ${s.rows === 100 ? 'selected' : ''}>100 rows</option><option value="1000" ${s.rows === 1000 ? 'selected' : ''}>1,000 rows</option><option value="10000" ${s.rows === 10000 ? 'selected' : ''}>10,000 rows</option></select></label>
+        <p>Limits visible datasheet and query results. Queries still execute in full; rerun a query to apply a new limit.</p>
+        <label class="check-setting"><input type="checkbox" data-setting="confirmActions" ${s.confirmActions ? 'checked' : ''}> Confirm SQL that modifies data or schema</label>
+      </div><div class="settings-group"><h2>Queries</h2>
+        <label>Default SQL dialect<select data-setting="sqlDialect"><option value="sqlite" ${s.sqlDialect !== 'access' ? 'selected' : ''}>SQLite</option><option value="access" ${s.sqlDialect === 'access' ? 'selected' : ''}>Access-style subset</option></select></label>
+        <p>Access-style mode translates selected expressions and SELECT TOP. It does not implement the full Access SQL dialect.</p>
+      </div><div class="settings-group"><h2>Current database</h2>
+        <label>Default table view<select data-db-setting="defaultTableView" ${state.db ? '' : 'disabled'}><option value="datasheet" ${databaseSetting('defaultTableView', 'datasheet') === 'datasheet' ? 'selected' : ''}>Datasheet</option><option value="design" ${databaseSetting('defaultTableView', 'datasheet') === 'design' ? 'selected' : ''}>Design</option></select></label>
+        <p>${state.db ? 'Saved inside this database.' : 'Open a database to edit its settings.'}</p></div>`;
   } else if (page === 'help') {
     content.innerHTML = `<h1>Help</h1><div class="file-actions"><h2>Keyboard shortcuts</h2><p>⌘N New database · ⌘O Open · ⌘S Save · ⌘K Search commands · ⌘↵ Run SQL · ⌘, Options</p><h2>Compatibility</h2><p>Macrosoft Access is a local SQLite-based database app. It is not Microsoft Access. Access table-data import requires mdbtools. A separate new .accdb table-data export requires Java 17+. Editing an existing .accdb, VBA, and native Access forms and reports are not available.</p><h2>Data safety</h2><p>Save regularly and keep backups of important databases. SQL commands can change or delete data. Declared SQLite foreign keys are enforced; diagram links are visual notes and do not enforce integrity.</p></div>`;
   }
@@ -225,9 +242,13 @@ async function newDatabase(fromTemplate = false) {
   return true;
 }
 
+function hasUnsavedQueryDrafts() {
+  return state.tabs.some(tab => tab.type === 'query' && (tab.draftNeedsSave || tab.draftSql !== undefined && tab.draftSql !== tab.baseSql));
+}
+
 async function confirmDiscard() {
-  if (!state.dirty) return true;
-  return window.confirm('This database has unsaved changes. Continue without saving?');
+  if (!state.dirty && !hasUnsavedQueryDrafts()) return true;
+  return window.confirm('This database or an SQL editor has unsaved changes. Continue without saving?');
 }
 
 let quitInProgress = false;
@@ -235,6 +256,7 @@ async function requestQuit() {
   if (quitInProgress) return;
   quitInProgress = true;
   try {
+    if (hasUnsavedQueryDrafts() && !window.confirm('Unsaved SQL drafts are not saved with the database. Save each query first to keep it. Quit anyway?')) return;
     const answer = await window.desktop.confirmQuit(state.dirty);
     if (answer === 'save') {
       await saveDatabase();
@@ -418,7 +440,7 @@ async function saveDatabase(saveAs = false) {
 
 function closeDatabase() {
   if (!state.db) return;
-  if (state.dirty && !window.confirm('Close without saving changes?')) return;
+  if ((state.dirty || hasUnsavedQueryDrafts()) && !window.confirm('Close without saving database changes and SQL drafts?')) return;
   state.db.close();
   state.db = null;
   state.filePath = null;
@@ -530,6 +552,8 @@ function renderTabs() {
 }
 
 function closeTab(id) {
+  const tab = state.tabs.find(item => item.id === id);
+  if (tab?.type === 'query' && (tab.draftNeedsSave || tab.draftSql !== undefined && tab.draftSql !== tab.baseSql) && !window.confirm(`Discard unsaved SQL changes in “${tab.name}”? Save the query first to keep them.`)) return;
   state.tabs = state.tabs.filter(tab => tab.id !== id);
   if (state.activeTab === id) state.activeTab = state.tabs.at(-1)?.id || null;
   renderTabs();
@@ -797,17 +821,18 @@ function deleteSelectedRecord() {
   } catch (error) { toast(`Could not delete record: ${error.message}`, 'error'); }
 }
 
-function renderSqlWorkspace(title, sql = 'SELECT *\nFROM ' + (state.objects.tables[0] ? quoteId(state.objects.tables[0]) : 'table_name') + '\nLIMIT 100;', dialect = state.settings.sqlDialect) {
+function renderSqlWorkspace(title, sql = 'SELECT *\nFROM ' + (state.objects.tables[0] ? quoteId(state.objects.tables[0]) : 'table_name') + '\nLIMIT 100;', dialect = state.settings.sqlDialect, replaceDraft = false) {
   const id = `query:${title}`;
   let tab = state.tabs.find(item => item.id === id);
   if (!tab) {
-    tab = { id, type: 'query', name: title, transient: title === 'SQL Query', dialect: dialect === 'access' ? 'access' : 'sqlite' };
+    tab = { id, type: 'query', name: title, transient: title === 'SQL Query', dialect: dialect === 'access' ? 'access' : 'sqlite', baseSql: sql };
     state.tabs.push(tab);
   }
   if (!tab.dialect) tab.dialect = dialect === 'access' ? 'access' : 'sqlite';
+  if (replaceDraft) { tab.draftSql = sql; tab.draftNeedsSave = true; }
   state.activeTab = id;
   renderTabs();
-  $('#documentSurface').innerHTML = `<div class="sql-workspace"><section class="editor-pane"><div class="local-toolbar"><button class="tool-button primary" data-action="run-query">▶ Run</button><button class="tool-button" data-action="save-query">▣ Save</button><button class="tool-button" data-action="query-design">⚒ Design</button><button class="tool-button" data-action="preview-sql">⌕ Preview SQL</button><span style="flex:1"></span><label for="queryDialect">Dialect</label><select id="queryDialect" data-query-dialect aria-label="Query dialect"><option value="sqlite" ${tab.dialect !== 'access' ? 'selected' : ''}>SQLite</option><option value="access" ${tab.dialect === 'access' ? 'selected' : ''}>Access-style subset</option></select></div><textarea id="sqlEditor" class="sql-editor" spellcheck="false" aria-label="SQL editor">${escapeHtml(sql)}</textarea></section><section id="queryResults" class="results-pane"><div class="message-panel">Press Run or ⌘↵ to execute the query. Access-style mode supports selected expressions and SELECT TOP, not the complete Access SQL dialect.</div></section></div>`;
+  $('#documentSurface').innerHTML = `<div class="sql-workspace"><section class="editor-pane"><div class="local-toolbar"><button class="tool-button primary" data-action="run-query">▶ Run</button><button class="tool-button" data-action="save-query">▣ Save</button><button class="tool-button" data-action="query-design">⚒ Design</button><button class="tool-button" data-action="preview-sql">⌕ Preview SQL</button><span style="flex:1"></span><label for="queryDialect">Dialect</label><select id="queryDialect" data-query-dialect aria-label="Query dialect"><option value="sqlite" ${tab.dialect !== 'access' ? 'selected' : ''}>SQLite</option><option value="access" ${tab.dialect === 'access' ? 'selected' : ''}>Access-style subset</option></select></div><textarea id="sqlEditor" class="sql-editor" spellcheck="false" aria-label="SQL editor">${escapeHtml(tab.draftSql ?? sql)}</textarea></section><section id="queryResults" class="results-pane"><div class="message-panel">Press Run or ⌘↵ to execute the query. Access-style mode supports selected expressions and SELECT TOP, not the complete Access SQL dialect.</div></section></div>`;
   setStatus(tab.dialect === 'access' ? 'Access-style SQL View' : 'SQLite SQL View');
 }
 
@@ -826,13 +851,15 @@ function runQuery() {
     return;
   }
   const source = editor.value.trim();
+  const tab = state.tabs.find(item => item.id === state.activeTab);
+  if (tab?.type === 'query') tab.draftSql = editor.value;
   if (!source) return;
   const started = performance.now();
   try {
     const sql = $('#queryDialect')?.value === 'access' ? translateAccessSql(source) : source;
-    if (/\bPRAGMA\s+(?:(?:main|temp)\s*\.\s*)?foreign_keys\s*(?:=|\()/i.test(sql)) throw new Error('Foreign-key enforcement cannot be changed in the SQL editor.');
-    const isAction = /\b(INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|REPLACE|VACUUM)\b/i.test(sql);
-    if (isAction && state.settings.confirmActions && !window.confirm('This query may change data or schema. Run it?')) return;
+    const policy = inspectSql(sql);
+    if (policy.changesForeignKeys) throw new Error('Foreign-key enforcement cannot be changed in the SQL editor.');
+    if (policy.mutates && state.settings.confirmActions && !window.confirm('This query may change data or schema. Run it?')) return;
     const resultSets = state.db.exec(sql);
     const elapsed = Math.round(performance.now() - started);
     if (!resultSets.length) {
@@ -843,9 +870,11 @@ function runQuery() {
       return;
     }
     const result = resultSets.at(-1);
-    state.lastResults = { name: 'Query Results', columns: result.columns, rows: result.values.map(values => Object.fromEntries(result.columns.map((c, i) => [c, values[i]]))) };
-    $('#queryResults').innerHTML = resultTableHtml(result.columns, result.values);
-    setStatus(`Query completed in ${elapsed} ms`, `${result.values.length} record${result.values.length === 1 ? '' : 's'}`);
+    const visible = result.values.slice(0, state.settings.rows);
+    const truncated = visible.length < result.values.length;
+    state.lastResults = { name: 'Query Results', columns: result.columns, rows: visible.map(values => Object.fromEntries(result.columns.map((c, i) => [c, values[i]]))) };
+    $('#queryResults').innerHTML = `${truncated ? `<p class="result-limit-note" role="status">Showing ${visible.length} of ${result.values.length} results. CSV exports only the displayed rows. Increase the limit in Options to see more.</p>` : ''}${resultTableHtml(result.columns, visible)}`;
+    setStatus(`Query completed in ${elapsed} ms`, truncated ? `${visible.length} of ${result.values.length} records displayed` : `${visible.length} record${visible.length === 1 ? '' : 's'}`);
   } catch (error) {
     $('#queryResults').innerHTML = `<div class="message-panel">Error: ${escapeHtml(error.message)}</div>`;
     setStatus('Query error');
@@ -868,7 +897,7 @@ function previewTranslatedSql() {
 function saveCurrentQuery() {
   if (!$('#sqlEditor')) {
     const generated = $('#designSql')?.textContent;
-    if (generated && generated !== 'No fields selected.') renderSqlWorkspace('SQL Query', generated);
+    if (generated && generated !== 'No fields selected.') renderSqlWorkspace('SQL Query', generated, state.settings.sqlDialect, true);
     else return toast('Select fields before saving the query.', 'error');
   }
   const current = state.tabs.find(tab => tab.id === state.activeTab);
@@ -885,7 +914,7 @@ function confirmSaveQuery(event) {
   state.db.run(`INSERT INTO _mda_objects(type,name,source,settings) VALUES('query',?,?,?) ON CONFLICT(type,name) DO UPDATE SET source=excluded.source,settings=excluded.settings`, [name, source, settings]);
   $('#saveQueryDialog').close();
   const old = state.tabs.find(tab => tab.id === state.activeTab);
-  if (old) { old.name = name; old.id = `query:${name}`; old.transient = false; old.dialect = $('#queryDialect')?.value === 'access' ? 'access' : 'sqlite'; state.activeTab = old.id; }
+  if (old) { old.name = name; old.id = `query:${name}`; old.transient = false; old.dialect = $('#queryDialect')?.value === 'access' ? 'access' : 'sqlite'; old.baseSql = source; old.draftSql = source; old.draftNeedsSave = false; state.activeTab = old.id; }
   markDirty(); refreshObjects(); renderTabs(); toast(`Query “${name}” saved`);
 }
 
@@ -907,7 +936,7 @@ function buildVisualQuery() {
   const tables = [...new Set(choices.map(c => c.table))];
   if (tables.length > 1) return toast('Multi-table visual queries require a relationship. Use SQL View for custom joins.', 'error');
   const sql = `SELECT ${choices.map(c => quoteId(c.field)).join(', ')}\nFROM ${quoteId(tables[0])};`;
-  renderSqlWorkspace('SQL Query', sql);
+  renderSqlWorkspace('SQL Query', sql, state.settings.sqlDialect, true);
   runQuery();
 }
 
@@ -1589,11 +1618,12 @@ document.addEventListener('change', event => {
   }
   if (event.target.matches('[data-setting]')) {
     const { setting } = event.target.dataset;
-    state.settings[setting] = event.target.type === 'checkbox' ? event.target.checked : setting === 'rows' ? Number(event.target.value) : event.target.value;
+    state.settings = normalizeSettings({ ...state.settings, [setting]: event.target.type === 'checkbox' ? event.target.checked : setting === 'rows' ? Number(event.target.value) : event.target.value });
     localStorage.setItem('macrosoft-access-settings', JSON.stringify(state.settings));
     document.documentElement.dataset.theme = state.settings.theme;
     document.documentElement.dataset.density = state.settings.density;
-    setStatus('Options saved');
+    if (setting === 'navigationPane') collapseNavigation(state.settings.navigationPane === 'collapsed');
+    setStatus(setting === 'rows' ? 'Display limit saved. Reopen the datasheet or rerun the query to apply it.' : 'Options saved');
   }
   if (event.target.matches('[data-db-setting]') && state.db) {
     state.db.run('INSERT INTO _mda_preferences(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', [event.target.dataset.dbSetting, event.target.value]);
@@ -1611,8 +1641,17 @@ document.addEventListener('change', event => {
 $('#objectSearch').addEventListener('input', event => renderObjectTree(event.target.value));
 document.addEventListener('input', event => {
   if (event.target.id === 'datasheetSearch') searchDatasheet(event.target.value);
+  if (event.target.id === 'sqlEditor') {
+    const tab = state.tabs.find(item => item.id === state.activeTab);
+    if (tab?.type === 'query') tab.draftSql = event.target.value;
+  }
 });
 document.addEventListener('input', event => {
+  if (event.target.id === 'templateSearch') {
+    const term = event.target.value.trim().toLocaleLowerCase();
+    const matches = $$('.template-list [data-template-search]').map(row => { row.hidden = !row.dataset.templateSearch.includes(term); return !row.hidden; });
+    $('#templateNoResults').hidden = matches.some(Boolean);
+  }
   if (event.target.id === 'homeRecentSearch') {
     const term = event.target.value.trim().toLocaleLowerCase();
     $$('.recent-row', $('#recentList')).forEach(row => { row.hidden = !row.textContent.toLocaleLowerCase().includes(term); });
@@ -1637,7 +1676,12 @@ function collapseNavigation(collapsed) {
   $('#collapseNav').setAttribute('aria-label', $('#collapseNav').title);
 }
 resizeNavigation(navigationWidth);
-$('#collapseNav').addEventListener('click', () => collapseNavigation(!navigationPane.classList.contains('collapsed')));
+collapseNavigation(state.settings.navigationPane === 'collapsed');
+$('#collapseNav').addEventListener('click', () => {
+  collapseNavigation(!navigationPane.classList.contains('collapsed'));
+  state.settings.navigationPane = navigationPane.classList.contains('collapsed') ? 'collapsed' : 'expanded';
+  localStorage.setItem('macrosoft-access-settings', JSON.stringify(state.settings));
+});
 navResizeHandle.addEventListener('pointerdown', event => {
   if (event.button !== 0) return;
   event.preventDefault();

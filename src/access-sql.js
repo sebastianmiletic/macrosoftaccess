@@ -6,7 +6,7 @@ const functions = new Map([
   ['date', 'MDA_Date'], ['now', 'MDA_Now'], ['len', 'length']
 ]);
 
-function tokenize(input) {
+export function tokenizeSql(input) {
   const result = [];
   let i = 0;
   while (i < input.length) {
@@ -40,7 +40,7 @@ function tokenize(input) {
 }
 
 export function translateAccessSql(source) {
-  const tokens = tokenize(String(source));
+  const tokens = tokenizeSql(String(source));
   const meaningful = tokens.map((token, index) => token.kind === 'space' || token.kind === 'comment' ? -1 : index).filter(index => index >= 0);
   const first = meaningful[0];
   let top = null;

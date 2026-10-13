@@ -326,6 +326,10 @@
   .file-info { display: flex; align-items: center; gap: 18px; margin: 35px 0; }
   .file-logo { width: 70px; height: 78px; object-fit: contain; flex: none; }
   .page-lede, .compat-note { color: var(--muted); }
+  .template-search { display: flex; align-items: center; gap: 12px; max-width: 760px; font-size: 12px; font-weight: 600; }
+  .template-search input { flex: 1; min-width: 0; height: 32px; padding: 4px 9px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); }
+  .template-no-results { color: var(--muted); font-size: 12px; }
+  .file-action-row[hidden], .template-no-results[hidden] { display: none; }
   .compat-note { max-width: 65ch; line-height: 1.5; margin-top: 32px; }
   .file-actions, .template-list, .recent-list { max-width: 760px; margin-top: 20px; border-top: 1px solid var(--line); }
   .file-action-row { display: grid; grid-template-columns: 48px 1fr auto; align-items: center; min-height: 71px; gap: 12px; border-bottom: 1px solid var(--line); }
@@ -340,6 +344,7 @@
   .recent-row strong, .recent-row small { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .recent-row small { color: var(--muted); margin-top: 3px; }
   .recent-row .recent-remove { width: 32px; height: 32px; font-size: 19px; }
+  .result-limit-note { margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--line); color: var(--ink); background: var(--selected); font-size: 12px; }
   .settings-group { max-width: 760px; padding: 14px 0; border-top: 1px solid var(--line); }
   .settings-group h2 { font-size: 16px; margin: 0 0 14px; }
   .settings-group label { min-height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }

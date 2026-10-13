@@ -17,18 +17,28 @@ socket.onmessage = event => {
   if (data.error || data.result?.exceptionDetails) reject(new Error(data.result?.exceptionDetails?.exception?.description || data.error?.message));
   else resolve(data.result.result?.value);
 };
-async function evaluate(expression) {
+async function command(method, params = {}) {
   const current = ++id;
   const promise = new Promise((resolve, reject) => pending.set(current, [resolve, reject]));
-  socket.send(JSON.stringify({ id: current, method: 'Runtime.evaluate', params: { expression, returnByValue: true, awaitPromise: true } }));
+  socket.send(JSON.stringify({ id: current, method, params }));
   return promise;
 }
+async function evaluate(expression) { return command('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true }); }
 try {
   await evaluate('new Promise((resolve, reject) => { const start=Date.now(); const poll=() => { if (document.querySelector(".home-more")) return resolve(true); if (Date.now()-start>10000) return reject(new Error("Home did not appear")); setTimeout(poll,50); }; poll(); })');
   await evaluate('document.querySelector("[data-tab=file]").click()');
   await evaluate('document.querySelector(".home-more").click()');
   assert.equal(await evaluate('document.querySelector("#backstageContent h1")?.textContent'), 'New');
-  assert.equal(await evaluate('document.querySelectorAll(".template-list [data-action^=template-]").length'), 8);
+  assert.equal(await evaluate('document.querySelectorAll(".template-list [data-action^=template-]").length'), 12);
+  await command('Emulation.setDeviceMetricsOverride', { width: 650, height: 780, deviceScaleFactor: 1, mobile: false });
+  assert.equal(await evaluate('document.documentElement.scrollWidth <= innerWidth'), true);
+  assert.equal(await evaluate('document.querySelector("#templateSearch").getBoundingClientRect().right <= innerWidth'), true);
+  await command('Emulation.clearDeviceMetricsOverride');
+  await evaluate(`(() => { const input=document.querySelector('#templateSearch'); input.value='library'; input.dispatchEvent(new Event('input',{bubbles:true})); })()`);
+  assert.equal(await evaluate('document.querySelectorAll(".template-list [data-template-search]:not([hidden])").length'), 1);
+  await evaluate(`(() => { const input=document.querySelector('#templateSearch'); input.value='no matching templates'; input.dispatchEvent(new Event('input',{bubbles:true})); })()`);
+  assert.equal(await evaluate('document.querySelector("#templateNoResults").hidden'), false);
+  await evaluate(`(() => { const input=document.querySelector('#templateSearch'); input.value=''; input.dispatchEvent(new Event('input',{bubbles:true})); })()`);
   await evaluate('document.querySelector("[data-action=template-contacts]").click()');
   assert.equal(await evaluate('document.querySelector(".document-tab .tab-name")?.textContent'), 'Contacts');
   assert.equal(await evaluate('document.querySelector(".datasheet th:nth-child(3)")?.textContent'), 'name');

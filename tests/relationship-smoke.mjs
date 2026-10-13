@@ -43,6 +43,8 @@ try {
   await evaluate('document.querySelector("[data-action=sql-query]").click()');
   await evaluate(`(() => { const dialect=document.querySelector('#queryDialect'); dialect.value='access'; dialect.dispatchEvent(new Event('change',{bubbles:true})); document.querySelector('#sqlEditor').value="SELECT Left('Laptop', 3) AS sample"; document.querySelector('[data-action=run-query]').click(); })()`);
   assert.equal(await evaluate('document.querySelector("#queryResults tbody td:last-child")?.textContent'), 'Lap');
+  await evaluate(`(() => { document.querySelector('#sqlEditor').value='PRAGMA /* comment */ foreign_keys = OFF'; document.querySelector('[data-action=run-query]').click(); })()`);
+  assert.equal(await evaluate('document.querySelector("#queryResults")?.textContent.includes("cannot be changed")'), true);
   await evaluate('document.querySelector("[data-object-name=Assets]").click()');
   await evaluate(`(() => { const row=document.querySelector('.datasheet .new-row'); row.querySelector('[data-column=location_id]').value='999'; const name=row.querySelector('[data-column=name]'); name.value='Laptop'; name.dispatchEvent(new Event('change',{bubbles:true})); })()`);
   assert.equal(await evaluate('document.querySelectorAll(".datasheet tr[data-rowid]").length'), 0);

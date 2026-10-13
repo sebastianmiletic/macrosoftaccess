@@ -6,7 +6,11 @@ const expected = {
   students: { table: 'Students', count: 3, field: 'first_name', value: 'Alex' },
   events: { table: 'Events', count: 3, field: 'name', value: 'Meeting' },
   nutrition: { table: 'Meals', count: 3, field: 'name', value: 'Breakfast' },
-  charity: { table: 'Donations', count: 3, field: 'amount', value: '25' }
+  charity: { table: 'Donations', count: 3, field: 'amount', value: '25' },
+  projects: { table: 'Projects', count: 4, field: 'name', value: 'Website' },
+  library: { table: 'Books', count: 3, field: 'title', value: 'Guide' },
+  finance: { table: 'Accounts', count: 3, field: 'name', value: 'Checking' },
+  support: { table: 'Tickets', count: 3, field: 'subject', value: 'Help' }
 }[kind];
 assert(expected, `Unknown template ${kind}`);
 const page = await (async () => {
@@ -40,14 +44,15 @@ async function evaluate(expression) {
 try {
   await evaluate('new Promise((resolve, reject) => { const start=Date.now(); const poll=() => { if (document.querySelector(".home-templates")) return resolve(true); if (Date.now()-start>10000) return reject(new Error("Home did not appear")); setTimeout(poll,50); }; poll(); })');
   assert.equal(await evaluate('document.querySelectorAll(".home-templates [data-action]").length'), 8);
+  if (['projects', 'library', 'finance', 'support'].includes(kind)) await evaluate('document.querySelector(".home-more").click()');
   await evaluate(`document.querySelector('[data-action=template-${kind}]').click()`);
   assert.equal(await evaluate('document.querySelector(".document-tab .tab-name")?.textContent'), expected.table);
   assert.equal(await evaluate('document.querySelectorAll("[data-object-type=table]").length'), expected.count);
   assert.equal(await evaluate(`document.querySelector('.datasheet th') !== null`), true);
   // Templates supply real writable fields, rather than just matching the screenshot.
-  if (kind === 'assets' || kind === 'events') {
+  if (['assets', 'events', 'projects', 'library', 'finance'].includes(kind)) {
     await evaluate(`(() => { const input=document.querySelector('.datasheet tbody tr.new-row input[data-column=${expected.field}]'); input.value=${JSON.stringify(expected.value)}; input.dispatchEvent(new Event('change',{bubbles:true})); })()`);
     assert.equal(await evaluate(`document.querySelector('.datasheet tbody tr:not(.new-row) input[data-column=${expected.field}]')?.value`), expected.value);
   }
-  console.log(`PASS: ${kind} local template opens with ${expected.count} tables${kind === 'assets' || kind === 'events' ? ' and writable records' : ''}`);
+  console.log(`PASS: ${kind} local template opens with ${expected.count} tables${['assets', 'events', 'projects', 'library', 'finance'].includes(kind) ? ' and writable records' : ''}`);
 } finally { socket.close(); }

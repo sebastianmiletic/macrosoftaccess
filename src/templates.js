@@ -41,7 +41,32 @@ CREATE TABLE Donations (id INTEGER PRIMARY KEY AUTOINCREMENT, donor_id INTEGER N
   {
     kind: 'inventory', title: 'Inventory', icon: '▦', description: 'Products, quantities and stock locations.', table: 'Products',
     sql: `CREATE TABLE Products (id INTEGER PRIMARY KEY AUTOINCREMENT, sku TEXT UNIQUE, product_name TEXT NOT NULL, quantity INTEGER NOT NULL DEFAULT 0, location TEXT, unit_price REAL);`
+  },
+  {
+    kind: 'projects', title: 'Project management', icon: '◫', description: 'Projects, milestones and team assignments.', table: 'Projects',
+    sql: `CREATE TABLE Projects (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, client TEXT, start_date TEXT, due_date TEXT, status TEXT DEFAULT 'Planned');
+CREATE TABLE TeamMembers (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, email TEXT, role TEXT);
+CREATE TABLE Milestones (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES Projects(id), title TEXT NOT NULL, due_date TEXT, completed INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE Assignments (id INTEGER PRIMARY KEY AUTOINCREMENT, project_id INTEGER NOT NULL REFERENCES Projects(id), member_id INTEGER NOT NULL REFERENCES TeamMembers(id), responsibility TEXT, UNIQUE(project_id, member_id));`
+  },
+  {
+    kind: 'library', title: 'Library', icon: '▥', description: 'Books, members and borrowing records.', table: 'Books',
+    sql: `CREATE TABLE Books (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, author TEXT, isbn TEXT UNIQUE, published_year INTEGER, shelf TEXT);
+CREATE TABLE Members (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, email TEXT, joined_date TEXT);
+CREATE TABLE Loans (id INTEGER PRIMARY KEY AUTOINCREMENT, book_id INTEGER NOT NULL REFERENCES Books(id), member_id INTEGER NOT NULL REFERENCES Members(id), borrowed_date TEXT NOT NULL, due_date TEXT, returned_date TEXT);`
+  },
+  {
+    kind: 'finance', title: 'Personal finance', icon: '◎', description: 'Accounts and transactions; amounts in whole cents.', table: 'Accounts',
+    sql: `CREATE TABLE Accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, account_type TEXT, currency_code TEXT DEFAULT 'USD');
+CREATE TABLE Categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, category_type TEXT);
+CREATE TABLE Transactions (id INTEGER PRIMARY KEY AUTOINCREMENT, account_id INTEGER NOT NULL REFERENCES Accounts(id), category_id INTEGER REFERENCES Categories(id), transaction_date TEXT NOT NULL, description TEXT, amount_cents INTEGER NOT NULL);`
+  },
+  {
+    kind: 'support', title: 'Customer support', icon: '◇', description: 'Customers, support tickets and updates.', table: 'Tickets',
+    sql: `CREATE TABLE Customers (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, email TEXT, organisation TEXT);
+CREATE TABLE Tickets (id INTEGER PRIMARY KEY AUTOINCREMENT, customer_id INTEGER NOT NULL REFERENCES Customers(id), subject TEXT NOT NULL, status TEXT DEFAULT 'Open', priority TEXT DEFAULT 'Normal', created_date TEXT, assigned_to TEXT);
+CREATE TABLE TicketUpdates (id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER NOT NULL REFERENCES Tickets(id), updated_date TEXT, author TEXT, note TEXT NOT NULL);`
   }
 ];
 
-export const featuredTemplates = templates.filter(template => template.kind !== 'inventory');
+export const featuredTemplates = templates.filter(template => ['contacts', 'assets', 'students', 'events', 'tasks', 'nutrition', 'charity'].includes(template.kind));

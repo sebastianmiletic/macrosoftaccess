@@ -75,6 +75,6 @@ try {
   assert.equal(await evaluate('document.documentElement.dataset.theme'), 'dark');
   await evaluate(`(() => { const select = document.querySelector('[data-db-setting=defaultTableView]'); select.value = 'design'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   await evaluate('document.querySelector("[data-file-page=new]").click()');
-  assert.equal(await evaluate('document.querySelectorAll("[data-action^=template-]").length'), 8);
+  assert.equal(await evaluate('document.querySelectorAll("[data-action^=template-]").length'), 12);
   console.log('PASS: app boot, CRUD, design view, SQL, command palette, File pages, templates and settings');
 } finally { socket.close(); }
