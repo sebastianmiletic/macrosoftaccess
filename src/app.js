@@ -1,6 +1,8 @@
 import initSqlJs from 'sql.js';
 import wasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
 import logoUrl from '../assets/logo-transparent.png';
+import { migrateMetadata, METADATA_VERSION } from './metadata.js';
+import { createImportReport, uniqueHeaders } from './compatibility.js';
 
 const SQL = await initSqlJs({ locateFile: () => wasmUrl });
 
@@ -18,6 +20,7 @@ const state = {
   lastResults: null,
   commandSelection: 0,
   filter: null,
+  importReport: null,
   backstagePage: 'info',
   settings: { theme: 'light', density: 'compact', confirmActions: true, rows: 1000 }
 };
@@ -57,27 +60,7 @@ function ensureDb() {
 }
 
 function createMetadata() {
-  state.db.run(`
-    CREATE TABLE IF NOT EXISTS _mda_objects (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      type TEXT NOT NULL,
-      name TEXT NOT NULL,
-      source TEXT NOT NULL DEFAULT '',
-      settings TEXT NOT NULL DEFAULT '{}',
-      UNIQUE(type, name)
-    );
-    CREATE TABLE IF NOT EXISTS _mda_relationships (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      from_table TEXT NOT NULL,
-      from_field TEXT NOT NULL,
-      to_table TEXT NOT NULL,
-      to_field TEXT NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS _mda_preferences (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL
-    );
-  `);
+  return migrateMetadata(state.db);
 }
 
 function rowsFromExec(sql, params = []) {
@@ -147,7 +130,7 @@ async function renderBackstage(page = 'info') {
   const content = $('#backstageContent');
   const row = (icon, title, description, action) => `<div class="file-action-row"><span>${icon}</span><div><strong>${title}</strong><p>${description}</p></div><button class="secondary-button" data-action="${action}">Open</button></div>`;
   if (page === 'info') {
-    content.innerHTML = `<h1>Database information</h1><div class="file-info"><img class="file-logo" src="${logoUrl}" alt="Macrosoft Access logo" /><div><h2>${escapeHtml(state.fileName || 'No database open')}</h2><p>${escapeHtml(state.filePath || 'Create or open a database to begin.')}</p></div></div><div class="file-actions">${row('ⓘ', 'Properties', 'Tables, records, file size and storage engine.', 'database-info')}${row('⧉', 'Back up database', 'Save a separate portable snapshot.', 'backup')}${row('✓', 'Check integrity', 'Inspect SQLite pages and indexes.', 'integrity-check')}${row('◫', 'Compact database', 'Reclaim unused storage.', 'compact')}</div><p class="compat-note">Access .mdb/.accdb table data can be imported with mdbtools. Native files use SQLite, not the Microsoft Access engine.</p>`;
+    content.innerHTML = `<h1>Database information</h1><div class="file-info"><img class="file-logo" src="${logoUrl}" alt="Macrosoft Access logo" /><div><h2>${escapeHtml(state.fileName || 'No database open')}</h2><p>${escapeHtml(state.filePath || 'Create or open a database to begin.')}</p></div></div><div class="file-actions">${row('ⓘ', 'Properties', 'Tables, records, file size and storage engine.', 'database-info')}${row('◎', 'Compatibility report', 'See preserved, converted and unsupported Access objects.', 'compatibility-report')}${row('⧉', 'Back up database', 'Save a separate portable snapshot.', 'backup')}${row('✓', 'Check integrity', 'Inspect SQLite pages and indexes.', 'integrity-check')}${row('◫', 'Compact database', 'Reclaim unused storage.', 'compact')}</div><p class="compat-note">Access .mdb/.accdb table data can be imported with mdbtools. Native files use SQLite, not the Microsoft Access engine.</p>`;
   } else if (page === 'new') {
     content.innerHTML = `<h1>New</h1><p class="page-lede">Start with a blank database or a ready-to-edit local template.</p><div class="template-list">${row('▦', 'Blank database', 'Create your own tables and relationships.', 'new')}${row('♟', 'Contacts', 'People, organisations and contact details.', 'template-contacts')}${row('▤', 'Inventory', 'Products, quantities and stock locations.', 'template-inventory')}${row('✓', 'Tasks', 'Track tasks, owners, priorities and due dates.', 'template-tasks')}</div>`;
   } else if (page === 'open') {
@@ -198,6 +181,7 @@ async function newDatabase(fromTemplate = false) {
   state.filePath = null;
   state.fileName = 'Untitled.macrodb';
   state.filter = null;
+  state.importReport = null;
   state.tabs = [];
   state.activeTab = null;
   state.selectedObject = null;
@@ -230,55 +214,84 @@ async function openDatabase(requestedPath) {
   try { file = await window.desktop.openFile(requestedPath); }
   catch (error) { toast(`Could not open file: ${error.message}`, 'error'); return; }
   if (!file) return;
-  const bytes = new Uint8Array(file.data);
-  const isAccess = /\.(accdb|mdb)$/i.test(file.path);
+  if (file.access) return importAccessDatabase(file);
+  const bytes = new Uint8Array(file.data || []);
+  if (new TextDecoder().decode(bytes.slice(0, 16)) !== 'SQLite format 3\0') {
+    toast('This is not a SQLite database. Use Import Access for .mdb/.accdb files.', 'error');
+    return;
+  }
   let incoming;
   try { incoming = new SQL.Database(bytes); }
+  catch (error) { toast(`Could not open database: ${error.message}`, 'error'); return; }
+  let migrated;
+  try { migrated = migrateMetadata(incoming); }
   catch (error) {
-    if (!isAccess) return toast(`Could not open database: ${error.message}`, 'error');
-    setStatus('Importing Access database…');
-    const imported = await window.desktop.importAccess(file.path);
-    if (!imported.ok) {
-      toast(imported.error, 'error');
-      setStatus('Import failed');
-      return;
-    }
-    const previous = state.db;
-    incoming = new SQL.Database();
-    state.db = incoming;
-    try {
-      createMetadata();
-      let count = 0;
-      for (const table of imported.tables) {
-        const data = parseCsv(table.csv);
-        if (!data.length) continue;
-        const headers = data[0].map((header, index) => header || `field_${index + 1}`);
-        const safeName = uniqueTableName(table.name);
-        state.db.run(`CREATE TABLE ${quoteId(safeName)} (${headers.map(h => `${quoteId(h)} TEXT`).join(', ')})`);
-        if (data.length > 1) {
-          const insert = state.db.prepare(`INSERT INTO ${quoteId(safeName)} VALUES (${headers.map(() => '?').join(',')})`);
-          try { for (const row of data.slice(1)) { insert.run(headers.map((_, i) => row[i] ?? null)); count++; } }
-          finally { insert.free(); }
-        }
-      }
-      previous?.close();
-      state.filePath = null;
-      state.fileName = file.name.replace(/\.(accdb|mdb)$/i, '.macrodb');
-      finishOpen(`Imported ${imported.tables.length} tables and ${count} records`);
-      markDirty(true);
-      toast('Access table data imported. Save as a Macrosoft database.');
-    } catch (importError) {
-      incoming.close(); state.db = previous;
-      toast(`Import failed: ${importError.message}`, 'error');
-    }
+    incoming.close();
+    toast(`Could not open database: ${error.message}`, 'error');
     return;
   }
   state.db?.close();
   state.db = incoming;
-  createMetadata();
   state.filePath = file.path;
   state.fileName = file.name;
-  finishOpen('Database opened');
+  finishOpen(migrated ? 'Database opened. Save to preserve updated project metadata.' : 'Database opened');
+  try {
+    const json = rowsFromExec("SELECT value FROM _mda_meta WHERE key='import_report'")[0]?.value;
+    state.importReport = json ? JSON.parse(json) : null;
+  } catch { state.importReport = null; }
+  if (migrated) markDirty(true);
+}
+
+async function importAccessDatabase(file) {
+  setStatus('Importing Access table data…');
+  const imported = await window.desktop.importAccess(file.path);
+  if (!imported.ok) {
+    toast(imported.error, 'error');
+    setStatus('Import failed');
+    return;
+  }
+  const incoming = new SQL.Database();
+  try {
+    migrateMetadata(incoming);
+    let count = 0;
+    const details = [];
+    const used = new Set();
+    incoming.run('SAVEPOINT access_import');
+    for (const table of imported.tables) {
+      const data = parseCsv(table.csv);
+      if (!data.length || !data[0].length) throw new Error(`Table “${table.name}” has no readable column headers.`);
+      const headers = uniqueHeaders(data[0]);
+      const base = String(table.name).replace(/[^\p{L}\p{N}_ ]/gu, '_') || 'ImportedTable';
+      let safeName = base;
+      let suffix = 2;
+      while (used.has(safeName.toLocaleLowerCase()) || safeName.startsWith('_mda_')) safeName = `${base}_${suffix++}`;
+      used.add(safeName.toLocaleLowerCase());
+      incoming.run(`CREATE TABLE ${quoteId(safeName)} (${headers.map(h => `${quoteId(h)} TEXT`).join(', ')})`);
+      const records = Math.max(0, data.length - 1);
+      if (records) {
+        const insert = incoming.prepare(`INSERT INTO ${quoteId(safeName)} VALUES (${headers.map(() => '?').join(',')})`);
+        try { for (const row of data.slice(1)) { insert.run(headers.map((_, i) => row[i] ?? null)); count++; } }
+        finally { insert.free(); }
+      }
+      details.push({ source: table.name, target: safeName, columns: headers.length, records });
+    }
+    const report = createImportReport(file.name, details, count);
+    incoming.run("INSERT INTO _mda_meta(key,value) VALUES('import_report',?)", [JSON.stringify(report)]);
+    incoming.run('RELEASE access_import');
+    state.db?.close();
+    state.db = incoming;
+    state.filePath = null;
+    state.fileName = file.name.replace(/\.(accdb|mdb)$/i, '.macrodb');
+    finishOpen(`Imported ${details.length} tables and ${count} records`);
+    state.importReport = report;
+    markDirty(true);
+    showCompatibilityReport();
+    toast('Access data imported. Review the compatibility report, then save.');
+  } catch (error) {
+    incoming.close();
+    toast(`Import failed; your original database is unchanged: ${error.message}`, 'error');
+    setStatus('Import failed');
+  }
 }
 
 function finishOpen(message) {
@@ -316,6 +329,7 @@ function closeDatabase() {
   state.filePath = null;
   state.fileName = null;
   state.filter = null;
+  state.importReport = null;
   state.tabs = [];
   state.activeTab = null;
   refreshObjects();
@@ -427,6 +441,7 @@ function renderActiveTab() {
   else if (tab.type === 'queryDesign') renderQueryDesigner();
   else if (tab.type === 'relationships') showRelationships();
   else if (tab.type === 'databaseInfo') showDatabaseInfo();
+  else if (tab.type === 'compatibility') showCompatibilityReport();
 }
 
 function setTableView(view) {
@@ -874,6 +889,23 @@ function parseCsv(text) {
   return rows;
 }
 
+function showCompatibilityReport() {
+  if (!ensureDb()) return;
+  const id = 'tool:compatibility';
+  if (!state.tabs.some(tab => tab.id === id)) state.tabs.push({ id, type: 'compatibility', name: 'Compatibility Report' });
+  state.activeTab = id;
+  renderTabs();
+  const report = state.importReport;
+  if (!report) {
+    $('#documentSurface').innerHTML = `<div class="database-dashboard"><h1>Compatibility report</h1><p>No Microsoft Access file has been imported into this database.</p><button class="primary-button" data-action="import-database">Import .mdb or .accdb data</button><p class="compat-note">Native projects use SQLite. Access forms, macros, reports, VBA and native .accdb editing are not supported.</p></div>`;
+    setStatus('No conversion report available');
+    return;
+  }
+  const list = (items) => `<ul class="compat-list">${items.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`;
+  $('#documentSurface').innerHTML = `<article class="database-dashboard compatibility-report"><h1>Import compatibility report</h1><p>Source: <strong>${escapeHtml(report.sourceName)}</strong> · ${escapeHtml(new Date(report.importedAt).toLocaleString())}</p><div class="summary-strip"><div class="summary-item"><strong>${Number(report.tableCount) || 0}</strong><span>Tables converted</span></div><div class="summary-item"><strong>${Number(report.recordCount) || 0}</strong><span>Rows imported</span></div></div><section class="compat-warning" role="status">${escapeHtml(report.warning)}</section><h2>Imported tables</h2><table class="schema-grid"><thead><tr><th>Source</th><th>Local table</th><th>Columns</th><th>Rows</th></tr></thead><tbody>${(report.tables || []).map(table => `<tr><td>${escapeHtml(table.source)}</td><td>${escapeHtml(table.target)}</td><td>${Number(table.columns) || 0}</td><td>${Number(table.records) || 0}</td></tr>`).join('')}</tbody></table><h2>Preserved</h2>${list(report.preserved || [])}<h2>Converted</h2>${list(report.converted || [])}<h2>Not imported</h2>${list(report.unsupported || [])}<p class="compat-note">Project metadata version: ${METADATA_VERSION}. The Access source file was not modified.</p></article>`;
+  setStatus('Import compatibility report', `${report.tableCount} tables · ${report.recordCount} records`);
+}
+
 function showDatabaseInfo() {
   if (!ensureDb()) return;
   const id = 'tool:database-info';
@@ -954,7 +986,8 @@ async function performAction(action) {
     'first-record': () => moveFormRecord('first'), 'prev-record': () => moveFormRecord('prev'),
     'next-record': () => moveFormRecord('next'), 'last-record': () => moveFormRecord('last'),
     relationships: showRelationships, 'add-relationship': addRelationship, compact: compactDatabase,
-    'database-info': showDatabaseInfo, 'integrity-check': integrityCheck, backup: backupDatabase,
+    'database-info': showDatabaseInfo, 'compatibility-report': showCompatibilityReport,
+    'integrity-check': integrityCheck, backup: backupDatabase,
     'add-field': addField, 'create-index': createIndex,
     'import-csv': importCsv, 'export-csv': exportCsv, 'export-pdf': exportPdf,
     print: () => window.desktop.print(), 'command-palette': openCommandPalette, view: switchView,
@@ -979,7 +1012,7 @@ const paletteCommands = [
   ['Switch view', 'view', 'Home'], ['Add field', 'add-field', 'Design'],
   ['Create index', 'create-index', 'Design'], ['Filter records', 'filter-records', 'Home'], ['Clear filter', 'clear-filter', 'Home'],
   ['Relationships', 'relationships', 'Database Tools'],
-  ['Database information', 'database-info', 'Database Tools'], ['Integrity check', 'integrity-check', 'Database Tools'],
+  ['Database information', 'database-info', 'Database Tools'], ['Compatibility report', 'compatibility-report', 'Database Tools'], ['Integrity check', 'integrity-check', 'Database Tools'],
   ['Compact database', 'compact', 'Database Tools'], ['Back up database', 'backup', 'Database Tools']
 ];
 

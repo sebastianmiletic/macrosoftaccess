@@ -1,0 +1,21 @@
+import assert from 'node:assert/strict';
+import initSqlJs from 'sql.js';
+import { migrateMetadata, METADATA_VERSION } from '../src/metadata.js';
+
+const SQL = await initSqlJs();
+const db = new SQL.Database();
+db.run('PRAGMA user_version=73; CREATE TABLE Contacts(id INTEGER PRIMARY KEY, name TEXT)');
+db.run('INSERT INTO Contacts VALUES(1, ?)', ['Alex']);
+assert.equal(migrateMetadata(db), true);
+assert.equal(migrateMetadata(db), false);
+assert.equal(db.exec("SELECT value FROM _mda_meta WHERE key='schema_version'")[0].values[0][0], String(METADATA_VERSION));
+assert.equal(db.exec('PRAGMA user_version')[0].values[0][0], 73);
+assert.equal(db.exec('SELECT name FROM Contacts')[0].values[0][0], 'Alex');
+const reopened = new SQL.Database(db.export());
+assert.equal(migrateMetadata(reopened), false);
+reopened.run("UPDATE _mda_meta SET value='99' WHERE key='schema_version'");
+assert.throws(() => migrateMetadata(reopened), /newer app/);
+assert.equal(reopened.exec('SELECT name FROM Contacts')[0].values[0][0], 'Alex');
+reopened.close();
+db.close();
+console.log('PASS: metadata migration, idempotency, persistence, unknown-version rejection');

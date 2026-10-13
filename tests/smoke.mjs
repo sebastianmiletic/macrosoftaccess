@@ -46,6 +46,10 @@ try {
   await evaluate('document.querySelector("[data-action=sql-query]").click()');
   await evaluate(`(() => { document.querySelector('#sqlEditor').value = 'SELECT name FROM Customers'; document.querySelector('[data-action=run-query]').click(); })()`);
   assert.equal(await evaluate('document.querySelector("#queryResults tbody td:last-child")?.textContent'), 'Alex Smith');
+  await evaluate(`(() => { document.querySelector('#sqlEditor').value = "SELECT value FROM _mda_meta WHERE key='schema_version'"; document.querySelector('[data-action=run-query]').click(); })()`);
+  assert.equal(await evaluate('document.querySelector("#queryResults tbody td:last-child")?.textContent'), '1');
+  await evaluate('document.querySelector("[data-action=compatibility-report]").click()');
+  assert.equal(await evaluate('document.querySelector("#documentSurface h1")?.textContent'), 'Compatibility report');
   await evaluate('document.querySelector("[data-action=command-palette]").click()');
   assert.equal(await evaluate('document.querySelector("#commandPalette").open'), true);
   await evaluate('document.querySelector("#commandPalette").close()');

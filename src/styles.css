@@ -172,6 +172,10 @@
   .schema-properties dt { font-weight: 600; background: var(--surface-2); }
   .database-dashboard { padding: 28px 34px; max-width: 1050px; }
   .database-dashboard h1 { margin: 0 0 5px; font-size: 24px; }
+  .compatibility-report h2 { margin: 25px 0 10px; font-size: 16px; }
+  .compatibility-report p { color: var(--muted); }
+  .compat-warning { padding: 12px 15px; border: 1px solid var(--line-strong); background: var(--accent-soft); line-height: 1.5; }
+  .compat-list { padding-left: 22px; line-height: 1.8; }
   .summary-strip { display: flex; border-block: 1px solid var(--line); margin: 24px 0; }
   .summary-item { min-width: 130px; padding: 16px 22px 16px 0; }
   .summary-item strong { display: block; font-size: 24px; font-weight: 650; }

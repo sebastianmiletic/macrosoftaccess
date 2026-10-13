@@ -84,9 +84,17 @@ function installMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-app.whenReady().then(() => { installMenu(); createWindow(); });
+app.whenReady().then(() => {
+  if (process.platform !== 'darwin') {
+    dialog.showErrorBox('Macrosoft Access requires macOS', 'Only macOS is supported in this release. Linux support is planned for a later version.');
+    app.quit();
+    return;
+  }
+  installMenu();
+  createWindow();
+});
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+app.on('activate', () => { if (process.platform === 'darwin' && BrowserWindow.getAllWindows().length === 0) createWindow(); });
 
 ipcMain.handle('file:new-path', async () => {
   const result = await dialog.showSaveDialog(mainWindow, {
@@ -125,6 +133,9 @@ ipcMain.handle('file:open', async (_event, requestedPath) => {
     });
     if (result.canceled) return null;
     filePath = result.filePaths[0];
+  }
+  if (/\.(accdb|mdb)$/i.test(filePath)) {
+    return { path: filePath, name: path.basename(filePath), access: true };
   }
   const data = await fs.readFile(filePath);
   await rememberFile(filePath);

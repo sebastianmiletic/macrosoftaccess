@@ -1,6 +1,6 @@
 # Macrosoft Access
 
-A local-first visual relational database workbench for macOS. **This is an independent application, not Microsoft Access or a complete Access clone.** The detailed product specification supplied for this project is a roadmap. Only the features listed as implemented below are present today.
+A local-first visual relational database workbench for **macOS only**. Linux support is a future goal, not a current capability. **This is an independent application, not Microsoft Access or a complete Access clone.** See the [feature and compatibility inventory](docs/FEATURE_MATRIX.md) for implemented and missing workflows.
 
 ## Run locally
 
@@ -30,12 +30,12 @@ The installer will be in `release/`. The app icon and UI logo are generated from
 - User-supplied logo in the title bar, welcome screen, File view and macOS app icon; familiar red ribbon styling, contextual object tabs, stateful button feedback and opening/closing transitions (disabled by reduced-motion settings).
 - File pages for Info, New, Open, Import, Export, Options and Help; recent files and Contacts, Inventory and Tasks templates.
 - Local application settings (light/dark theme, density, query result limit, action confirmation) and a per-database default table view.
-- Local SQLite-backed `.macrodb`, `.sqlite` and `.db` files; create, open, save and save-as.
+- Local SQLite-backed `.macrodb`, `.sqlite` and `.db` files; create, open, save and save-as. Internal project metadata is versioned and rejects newer unsupported versions.
 - Tables: create fields using SQLite types and constraints, inspect schema, add fields, add indexes, edit cells and records, sort and delete records.
 - Queries: SQLite SQL editor, saved queries, results grid, basic single-table visual field picker, confirmation for action SQL.
 - Generated single-record forms and read-only printable tabular reports, PDF export.
 - Relationship diagram with **metadata-only** relationship declarations, not enforced foreign keys. For enforced constraints, create SQLite foreign keys using SQL.
-- CSV import/export; best-effort `.mdb` and `.accdb` **table data import** using `mdbtools`.
+- CSV import/export; best-effort `.mdb` and `.accdb` **table data import** using `mdbtools`, with a saved conversion report listing imported tables, row counts and known losses.
 - Backup snapshot, integrity check and compact (`VACUUM`).
 
 ## Access format limitations
@@ -48,7 +48,7 @@ brew install mdbtools
 
 The **External Data → Import Access** command accepts `.mdb` and `.accdb` files and creates a new editable local database from their tables. `mdbtools` must be installed separately. No representative Access fixture was available for automated import testing, so import compatibility varies by file.
 
-Import extracts tables and CSV-formatted rows. It does **not** preserve Access forms, reports, macros, VBA, attachment semantics, query definitions, indexes, relationships, validation rules or every Access field type. It cannot save or round-trip `.accdb` files. Microsoft's proprietary Access engine is not provided for macOS. Imported data is saved into a new `.macrodb`, `.sqlite` or `.db` file.
+Imported columns are stored as SQLite `TEXT`, not their original Access types. Duplicate and blank headers are renamed for SQLite; the compatibility report records the target table names. Import leaves the original file untouched. It does **not** preserve Access forms, reports, macros, VBA, attachment semantics, query definitions, indexes, relationships, validation rules or every Access field type. It cannot save or round-trip `.accdb` files. Microsoft's proprietary Access engine is not provided for macOS. Imported data is saved into a new `.macrodb`, `.sqlite` or `.db` file.
 
 ## Roadmap status
 
@@ -65,7 +65,7 @@ Do not rely on this app as the only copy of important data. Back up project file
 
 ## Tests
 
-`npm run check` builds the renderer. A browser-level smoke test is available using a launched Electron instance with remote debugging enabled:
+`npm run check` runs metadata and compatibility unit tests and builds the renderer. A browser-level smoke test is available using a launched Electron instance with remote debugging enabled:
 
 ```bash
 ./node_modules/.bin/electron --remote-debugging-port=9225 .
