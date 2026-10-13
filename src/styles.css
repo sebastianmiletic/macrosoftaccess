@@ -191,6 +191,23 @@
   .record-form { display: grid; grid-template-columns: minmax(130px, 190px) minmax(240px, 1fr); align-items: center; gap: 12px 18px; }
   .record-form label { text-align: right; font-weight: 600; }
   .record-form input { height: 31px; padding: 0 8px; }
+  .record-form input[type="checkbox"] { width: 18px; height: 18px; justify-self: start; accent-color: var(--accent); }
+  .record-form textarea { min-height: 74px; resize: vertical; padding: 7px 8px; }
+  .form-designer { min-width: 840px; min-height: 100%; background: var(--surface); }
+  .form-designer-body { max-width: 1160px; padding: 16px 24px 32px; }
+  .form-designer-body > p { color: var(--muted); }
+  .form-title-label { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; font-weight: 600; }
+  .form-title-label input { width: 360px; height: 30px; padding: 0 8px; font-weight: 400; }
+  .form-control-list { border-top: 1px solid var(--line-strong); }
+  .form-control-row { min-height: 52px; display: grid; grid-template-columns: 25px minmax(150px, 1fr) 120px 110px 95px 85px 27px 27px; align-items: center; gap: 7px; padding: 4px 8px; border-bottom: 1px solid var(--line); background: var(--surface); }
+  .form-control-row:hover { background: var(--surface-2); }
+  .form-control-row label:not(.inline-check) { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
+  .form-control-row label:not(.inline-check) input { min-width: 0; width: 100%; height: 28px; padding: 0 7px; color: var(--ink); font-size: 12px; }
+  .form-control-row select { width: 100%; height: 28px; }
+  .form-control-row .inline-check { display: flex; align-items: center; gap: 4px; white-space: nowrap; font-size: 11px; }
+  .form-control-row input[type="checkbox"] { accent-color: var(--accent); }
+  .bound-field { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 11px var(--mono); }
+  .drag-handle { cursor: grab; color: var(--muted); user-select: none; text-align: center; }
   .record-nav { margin-top: 25px; padding-top: 10px; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: center; gap: 4px; }
 
   .report-view { width: min(900px, calc(100% - 40px)); min-height: 1050px; margin: 22px auto; padding: 52px 58px; background: oklch(99.3% .002 285); box-shadow: 0 2px 12px oklch(20% .02 285 / .18); }

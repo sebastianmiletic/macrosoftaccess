@@ -3,6 +3,7 @@ import wasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
 import logoUrl from '../assets/logo-transparent.png';
 import { migrateMetadata, METADATA_VERSION } from './metadata.js';
 import { createImportReport, uniqueHeaders } from './compatibility.js';
+import { defaultFormSettings, normalizeFormSettings, FORM_CONTROL_TYPES } from './form-model.js';
 
 const SQL = await initSqlJs({ locateFile: () => wasmUrl });
 
@@ -436,7 +437,7 @@ function renderActiveTab() {
   if (!tab) return showWelcome(!state.db);
   if (tab.type === 'table') tab.view === 'design' ? renderTableDesign(tab.name) : renderDatasheet(tab.name);
   else if (tab.type === 'query') renderQuery(tab.name);
-  else if (tab.type === 'form') renderForm(tab.name);
+  else if (tab.type === 'form') tab.view === 'design' ? renderFormDesign(tab.name) : renderForm(tab.name);
   else if (tab.type === 'report') renderReport(tab.name);
   else if (tab.type === 'queryDesign') renderQueryDesigner();
   else if (tab.type === 'relationships') showRelationships();
@@ -453,6 +454,7 @@ function setTableView(view) {
 
 function switchView() {
   const tab = state.tabs.find(item => item.id === state.activeTab);
+  if (tab?.type === 'form') return setFormView(tab.view === 'design' ? 'form' : 'design');
   if (!tab || tab.type !== 'table') return;
   setTableView(tab.view === 'design' ? 'datasheet' : 'design');
 }
@@ -648,16 +650,65 @@ function createForm() {
   if (table) createFormFor(table);
 }
 
+function getFormSettings(item) {
+  return normalizeFormSettings(item.settings, getColumns(item.source), item.name);
+}
+
+function setFormView(view) {
+  const tab = state.tabs.find(item => item.id === state.activeTab);
+  if (tab?.type !== 'form') return;
+  tab.view = view;
+  renderActiveTab();
+}
+
 function renderForm(name) {
   const item = state.objects.forms.find(f => f.name === name);
   if (!item) return showError(new Error('Form not found'));
   const table = item.source;
   const columns = getColumns(table);
+  const settings = getFormSettings(item);
   const rows = rowsFromExec(`SELECT rowid AS __rowid__, * FROM ${quoteId(table)}`);
   state.formIndex = Math.min(state.formIndex, Math.max(0, rows.length - 1));
   const row = rows[state.formIndex] || {};
-  $('#documentSurface').innerHTML = `<div class="form-view" data-form-table="${escapeHtml(table)}" data-rowid="${escapeHtml(row.__rowid__ || '')}"><div class="form-header"><div><h2>${escapeHtml(name)}</h2><span>${escapeHtml(table)}</span></div><button class="tool-button" data-action="save-form-record">Save record</button></div><div class="record-form">${columns.map(c => `<label for="form-${escapeHtml(c.name)}">${escapeHtml(c.name)}</label><input id="form-${escapeHtml(c.name)}" data-form-column="${escapeHtml(c.name)}" value="${escapeHtml(row[c.name])}" ${c.pk ? 'title="Primary key"' : ''}>`).join('')}</div><div class="record-nav"><button class="tool-button" data-action="first-record">|‹</button><button class="tool-button" data-action="prev-record">‹</button><span>Record ${rows.length ? state.formIndex + 1 : 0} of ${rows.length}</span><button class="tool-button" data-action="next-record">›</button><button class="tool-button" data-action="last-record">›|</button><button class="tool-button" data-action="new-form-record">＊ New</button></div></div>`;
+  const inputs = settings.controls.filter(control => control.visible).map(control => {
+    const column = columns.find(c => c.name === control.field);
+    const id = `form-${control.field.replace(/[^\p{L}\p{N}_-]/gu, '_')}`;
+    const value = row[control.field];
+    const required = control.required || (column.notnull && !column.pk);
+    const common = `id="${escapeHtml(id)}" data-form-column="${escapeHtml(control.field)}" ${required ? 'required' : ''} ${column.pk ? 'readonly title="Primary key"' : ''}`;
+    const input = control.type === 'textarea'
+      ? `<textarea ${common} rows="3">${escapeHtml(value)}</textarea>`
+      : control.type === 'checkbox'
+        ? `<input ${common} type="checkbox" ${value === 1 || value === '1' || value === true ? 'checked' : ''}>`
+        : `<input ${common} type="${control.type}" value="${escapeHtml(value)}">`;
+    return `<label for="${escapeHtml(id)}">${escapeHtml(control.label)}</label>${input}`;
+  }).join('');
+  $('#documentSurface').innerHTML = `<div class="form-view" data-form-table="${escapeHtml(table)}" data-rowid="${escapeHtml(row.__rowid__ ?? '')}"><div class="form-header"><div><h2>${escapeHtml(settings.title)}</h2><span>${escapeHtml(table)} · ${escapeHtml(name)}</span></div><div><button class="tool-button" data-action="form-design">⚒ Design View</button> <button class="tool-button primary" data-action="save-form-record">Save record</button></div></div><div class="record-form">${inputs || '<p>No controls are visible. Open Design View to show fields.</p>'}</div><div class="record-nav"><button class="tool-button" data-action="first-record">|‹</button><button class="tool-button" data-action="prev-record">‹</button><span>Record ${rows.length ? state.formIndex + 1 : 0} of ${rows.length}</span><button class="tool-button" data-action="next-record">›</button><button class="tool-button" data-action="last-record">›|</button><button class="tool-button" data-action="new-form-record">＊ New</button></div></div>`;
   setStatus('Form View', `${rows.length} records`);
+}
+
+function renderFormDesign(name) {
+  const item = state.objects.forms.find(f => f.name === name);
+  if (!item) return showError(new Error('Form not found'));
+  const settings = getFormSettings(item);
+  $('#documentSurface').innerHTML = `<section class="form-designer" data-form-name="${escapeHtml(name)}"><div class="design-toolbar"><strong>Form Design · ${escapeHtml(name)}</strong><span style="flex:1"></span><button class="tool-button" data-action="form-view">▣ Form View</button></div><div class="form-designer-body"><p>Arrange bound controls. Changes are saved to this database when you save the file.</p><label class="form-title-label">Form title <input data-form-title maxlength="120" value="${escapeHtml(settings.title)}"></label><div class="form-control-list" aria-label="Form controls">${settings.controls.map((control, index) => `<div class="form-control-row" data-control-index="${index}" draggable="true"><span class="drag-handle" title="Drag to reorder">⋮⋮</span><label>Caption <input data-control-property="label" value="${escapeHtml(control.label)}" maxlength="120"></label><span class="bound-field">${escapeHtml(control.field)}</span><label>Control <select data-control-property="type">${FORM_CONTROL_TYPES.map(type => `<option value="${type}" ${type === control.type ? 'selected' : ''}>${type}</option>`).join('')}</select></label><label class="inline-check"><input data-control-property="required" type="checkbox" ${control.required ? 'checked' : ''}> Required</label><label class="inline-check"><input data-control-property="visible" type="checkbox" ${control.visible ? 'checked' : ''}> Visible</label><button class="tool-button" data-reorder="up" title="Move up" ${index === 0 ? 'disabled' : ''}>↑</button><button class="tool-button" data-reorder="down" title="Move down" ${index === settings.controls.length - 1 ? 'disabled' : ''}>↓</button></div>`).join('')}</div><p class="compat-note">This designer supports bound text, long text, number, date and checkbox controls. Advanced Access controls, event handlers and subforms are not available yet.</p></div></section>`;
+  setStatus('Form Design View', `${settings.controls.length} controls`);
+}
+
+function saveFormDesign(name, settings) {
+  state.db.run("UPDATE _mda_objects SET settings=? WHERE type='form' AND name=?", [JSON.stringify(settings), name]);
+  markDirty(); refreshObjects();
+  setStatus('Form design updated. Save the database to keep changes.');
+}
+
+function reorderFormControl(name, from, to) {
+  const item = state.objects.forms.find(f => f.name === name);
+  if (!item) return;
+  const settings = getFormSettings(item);
+  if (from < 0 || from >= settings.controls.length || to < 0 || to >= settings.controls.length || from === to) return;
+  settings.controls.splice(to, 0, settings.controls.splice(from, 1)[0]);
+  saveFormDesign(name, settings);
+  renderFormDesign(name);
 }
 
 function moveFormRecord(where) {
@@ -672,27 +723,33 @@ function moveFormRecord(where) {
   renderForm(tab.name);
 }
 
-function saveFormRecord(isNew = false) {
+function saveFormRecord() {
   const form = $('.form-view');
   if (!form) return;
   const table = form.dataset.formTable;
   const inputs = $$('[data-form-column]', form);
+  const invalid = inputs.find(input => !input.checkValidity());
+  if (invalid) { invalid.reportValidity(); return; }
+  const primaryKeys = new Set(getColumns(table).filter(column => column.pk).map(column => column.name));
+  const values = inputs.map(input => ({ name: input.dataset.formColumn, value: input.type === 'checkbox' ? (input.checked ? 1 : 0) : input.value === '' ? null : input.value }));
   try {
-    if (isNew || !form.dataset.rowid) {
-      state.db.run(`INSERT INTO ${quoteId(table)} (${inputs.map(i => quoteId(i.dataset.formColumn)).join(',')}) VALUES (${inputs.map(() => '?').join(',')})`, inputs.map(i => i.value || null));
+    if (!form.dataset.rowid) {
+      const fields = values.filter(item => !(primaryKeys.has(item.name) && item.value === null));
+      if (fields.length) state.db.run(`INSERT INTO ${quoteId(table)} (${fields.map(item => quoteId(item.name)).join(',')}) VALUES (${fields.map(() => '?').join(',')})`, fields.map(item => item.value));
+      else state.db.run(`INSERT INTO ${quoteId(table)} DEFAULT VALUES`);
       state.formIndex = rowsFromExec(`SELECT COUNT(*) count FROM ${quoteId(table)}`)[0].count - 1;
-    } else {
-      state.db.run(`UPDATE ${quoteId(table)} SET ${inputs.map(i => `${quoteId(i.dataset.formColumn)}=?`).join(',')} WHERE rowid=?`, [...inputs.map(i => i.value || null), form.dataset.rowid]);
-    }
+    } else if (values.length) {
+      state.db.run(`UPDATE ${quoteId(table)} SET ${values.map(item => `${quoteId(item.name)}=?`).join(',')} WHERE rowid=?`, [...values.map(item => item.value), form.dataset.rowid]);
+    } else return toast('This form has no visible fields to save.', 'error');
     markDirty(); renderActiveTab(); toast('Record saved');
-  } catch (error) { toast(error.message, 'error'); }
+  } catch (error) { toast(`Could not save ${table} record: ${error.message}`, 'error'); }
 }
 
 function newFormRecord() {
   const form = $('.form-view');
   if (!form) return;
   form.dataset.rowid = '';
-  $$('[data-form-column]', form).forEach(input => { input.value = ''; });
+  $$('[data-form-column]', form).forEach(input => { if (input.type === 'checkbox') input.checked = false; else input.value = ''; });
   $$('[data-form-column]', form)[0]?.focus();
 }
 
@@ -829,7 +886,8 @@ function handleObjectContext(action) {
 
 function createFormFor(table) {
   const name = nextName(`${table} Form `, state.objects.forms);
-  state.db.run("INSERT INTO _mda_objects(type,name,source) VALUES('form',?,?)", [name, table]);
+  const settings = defaultFormSettings(getColumns(table), name);
+  state.db.run("INSERT INTO _mda_objects(type,name,source,settings) VALUES('form',?,?,?)", [name, table, JSON.stringify(settings)]);
   markDirty(); refreshObjects(); openObject('form', name);
 }
 
@@ -982,7 +1040,8 @@ async function performAction(action) {
     'sql-query': () => { if (ensureDb()) renderSqlWorkspace('SQL Query'); },
     'run-query': runQuery, 'save-query': saveCurrentQuery, 'query-design': renderQueryDesigner,
     'build-query': buildVisualQuery, 'create-form': createForm, 'create-report': createReport,
-    'save-form-record': () => saveFormRecord(false), 'new-form-record': newFormRecord,
+    'form-design': () => setFormView('design'), 'form-view': () => setFormView('form'),
+    'save-form-record': saveFormRecord, 'new-form-record': newFormRecord,
     'first-record': () => moveFormRecord('first'), 'prev-record': () => moveFormRecord('prev'),
     'next-record': () => moveFormRecord('next'), 'last-record': () => moveFormRecord('last'),
     relationships: showRelationships, 'add-relationship': addRelationship, compact: compactDatabase,
@@ -1008,7 +1067,7 @@ const paletteCommands = [
   ['Create table', 'create-table', 'Create'], ['Import CSV', 'import-csv', 'External Data'],
   ['Export CSV', 'export-csv', 'External Data'], ['Export PDF', 'export-pdf', 'External Data'],
   ['SQL query', 'sql-query', 'Create'], ['Visual query designer', 'query-design', 'Create'],
-  ['Create form', 'create-form', 'Create'], ['Create report', 'create-report', 'Create'],
+  ['Create form', 'create-form', 'Create'], ['Form Design View', 'form-design', 'Form Tools'], ['Form View', 'form-view', 'Form Tools'], ['Create report', 'create-report', 'Create'],
   ['Switch view', 'view', 'Home'], ['Add field', 'add-field', 'Design'],
   ['Create index', 'create-index', 'Design'], ['Filter records', 'filter-records', 'Home'], ['Clear filter', 'clear-filter', 'Home'],
   ['Relationships', 'relationships', 'Database Tools'],
@@ -1088,6 +1147,12 @@ document.addEventListener('click', event => {
   const contextAction = event.target.closest('[data-context-action]')?.dataset.contextAction;
   if (contextAction) handleObjectContext(contextAction);
   else if (!event.target.closest('#contextMenu')) $('#contextMenu').classList.add('hidden');
+  const move = event.target.closest('[data-reorder]');
+  if (move) {
+    const designer = move.closest('.form-designer');
+    const from = Number(move.closest('[data-control-index]').dataset.controlIndex);
+    reorderFormControl(designer.dataset.formName, from, from + (move.dataset.reorder === 'up' ? -1 : 1));
+  }
   const action = event.target.closest('[data-action]')?.dataset.action;
   if (action) performAction(action);
   const object = event.target.closest('[data-object-type]');
@@ -1116,7 +1181,38 @@ document.addEventListener('contextmenu', event => {
   menu.querySelector('button')?.focus();
 });
 
+document.addEventListener('dragstart', event => {
+  const row = event.target.closest('.form-control-row');
+  if (!row || !event.dataTransfer) return;
+  event.dataTransfer.setData('text/plain', row.dataset.controlIndex);
+  event.dataTransfer.effectAllowed = 'move';
+});
+document.addEventListener('dragover', event => {
+  if (event.target.closest('.form-control-row')) event.preventDefault();
+});
+document.addEventListener('drop', event => {
+  const row = event.target.closest('.form-control-row');
+  const designer = row?.closest('.form-designer');
+  if (!designer || !event.dataTransfer) return;
+  event.preventDefault();
+  const from = Number(event.dataTransfer.getData('text/plain'));
+  if (Number.isInteger(from)) reorderFormControl(designer.dataset.formName, from, Number(row.dataset.controlIndex));
+});
+
 document.addEventListener('change', event => {
+  const designer = event.target.closest('.form-designer');
+  if (designer && (event.target.matches('[data-form-title]') || event.target.matches('[data-control-property]'))) {
+    const item = state.objects.forms.find(form => form.name === designer.dataset.formName);
+    if (!item) return;
+    const settings = getFormSettings(item);
+    if (event.target.matches('[data-form-title]')) settings.title = event.target.value.trim() || item.name;
+    else {
+      const row = event.target.closest('[data-control-index]');
+      const key = event.target.dataset.controlProperty;
+      settings.controls[Number(row.dataset.controlIndex)][key] = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
+    }
+    saveFormDesign(item.name, settings);
+  }
   if (event.target.matches('[data-setting]')) {
     const { setting } = event.target.dataset;
     state.settings[setting] = event.target.type === 'checkbox' ? event.target.checked : setting === 'rows' ? Number(event.target.value) : event.target.value;

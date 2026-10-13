@@ -9,7 +9,7 @@ This is an implementation tracker, not a statement of parity with any Microsoft 
 | Tables and datasheets | Partial | Create/edit records, basic schema, add fields and indexes. No full Access type matrix, validation designer, multi-cell selection or undo. |
 | Relationships | Partial | Visual metadata relationships; not enforced by SQLite unless defined explicitly in SQL. |
 | Queries | Partial | SQLite SQL editor and single-table field picker. No Access SQL compatibility layer, complete QBE, query history or query debugger. |
-| Forms | Partial | Generated bound single-record editor. No drag/drop designer, subforms, advanced controls or events. |
+| Forms | Partial | Generated bound single-record editor with saved form title, captions, bound field visibility/required settings, text/long text/number/date/checkbox controls, reorder by drag or keyboard-accessible buttons. No free-placement designer, subforms, lookup controls, macros or events. |
 | Reports | Partial | Tabular report preview, print and PDF. No group pagination, layout designer or charts. |
 | Macros and scripting | Not implemented | No VBA interpreter, Access object model, macro builder or trusted script runtime. |
 | Import/export | Partial | CSV import/export; mdbtools `.mdb/.accdb` table data import with conversion report. No round-trip `.accdb`, query/form/report conversion, linked sources, Excel or ODBC. |
