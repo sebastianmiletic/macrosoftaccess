@@ -24,8 +24,11 @@ async function evaluate(expression) {
   return promise;
 }
 try {
+  await evaluate('new Promise((resolve, reject) => { const start=Date.now(); const poll=() => { if (document.querySelector(".home-more")) return resolve(true); if (Date.now()-start>10000) return reject(new Error("Home did not appear")); setTimeout(poll,50); }; poll(); })');
   await evaluate('document.querySelector("[data-tab=file]").click()');
-  await evaluate('document.querySelector("[data-file-page=new]").click()');
+  await evaluate('document.querySelector(".home-more").click()');
+  assert.equal(await evaluate('document.querySelector("#backstageContent h1")?.textContent'), 'New');
+  assert.equal(await evaluate('document.querySelectorAll(".template-list [data-action^=template-]").length'), 8);
   await evaluate('document.querySelector("[data-action=template-contacts]").click()');
   assert.equal(await evaluate('document.querySelector(".document-tab .tab-name")?.textContent'), 'Contacts');
   assert.equal(await evaluate('document.querySelector(".datasheet th:nth-child(3)")?.textContent'), 'name');

@@ -29,7 +29,7 @@ try {
   assert.equal(await evaluate('document.title'), 'Macrosoft Access');
   assert.equal(await evaluate('document.querySelector(".app-mark")?.naturalWidth > 0'), true);
   assert.equal(await evaluate('document.querySelector(".file-home") !== null'), true);
-  assert.equal(await evaluate('document.querySelectorAll(".home-templates [data-action]").length'), 4);
+  assert.equal(await evaluate('document.querySelectorAll(".home-templates [data-action]").length'), 8);
   await evaluate('document.querySelector(".home-templates [data-action=new]").click()');
   assert.equal(await evaluate('document.querySelector("#tableDialog").open'), true);
   await evaluate(`(() => { document.querySelector('#tableName').value = 'Customers'; document.querySelector('#tableFields').value = 'id INTEGER PRIMARY KEY AUTOINCREMENT\\nname TEXT NOT NULL\\nemail TEXT'; document.querySelector('#confirmTable').click(); })()`);
@@ -75,6 +75,6 @@ try {
   assert.equal(await evaluate('document.documentElement.dataset.theme'), 'dark');
   await evaluate(`(() => { const select = document.querySelector('[data-db-setting=defaultTableView]'); select.value = 'design'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
   await evaluate('document.querySelector("[data-file-page=new]").click()');
-  assert.equal(await evaluate('document.querySelectorAll("[data-action^=template-]").length'), 3);
+  assert.equal(await evaluate('document.querySelectorAll("[data-action^=template-]").length'), 8);
   console.log('PASS: app boot, CRUD, design view, SQL, command palette, File pages, templates and settings');
 } finally { socket.close(); }

@@ -8,6 +8,7 @@ import { fieldMapping, parseAccessPrimaryKey } from './access-schema.js';
 import { translateAccessSql, registerAccessFunctions } from './access-sql.js';
 import { normalizeReportSettings } from './report-model.js';
 import { accessExportPayload } from './access-export.js';
+import { templates, featuredTemplates } from './templates.js';
 
 const SQL = await initSqlJs({ locateFile: () => wasmUrl });
 
@@ -143,7 +144,7 @@ async function renderBackstage(page = 'info') {
   const row = (icon, title, description, action) => `<div class="file-action-row"><span>${icon}</span><div><strong>${title}</strong><p>${description}</p></div><button class="secondary-button" data-action="${action}">Open</button></div>`;
   const recentRows = recent => recent.length ? recent.map(item => `<div class="recent-row"><button data-recent-path="${escapeHtml(item.path)}" ${item.available ? '' : 'disabled'}><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.path)}${item.available ? '' : ' · Unavailable'}</small></button><button class="recent-remove" data-remove-recent="${escapeHtml(item.path)}" title="Remove from recent">×</button></div>`).join('') : '<p>No recent databases yet. Create one or browse for a local file.</p>';
   if (page === 'home') {
-    content.innerHTML = `<div class="file-home"><h1>Good ${new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 18 ? 'afternoon' : 'evening'}</h1><section class="home-new"><h2>New</h2><div class="home-templates"><button data-action="new"><span class="template-symbol">▤</span><strong>Blank database</strong></button><button data-action="template-contacts"><span class="template-symbol">♙</span><strong>Contacts</strong></button><button data-action="template-inventory"><span class="template-symbol">▦</span><strong>Inventory</strong></button><button data-action="template-tasks"><span class="template-symbol">☑</span><strong>Tasks</strong></button></div></section><section class="home-recent"><div class="home-recent-header"><h2>Recent databases</h2><button class="secondary-button" data-action="open">Browse files…</button></div><label class="home-search">⌕ <input id="homeRecentSearch" type="search" aria-label="Search recent databases" placeholder="Search recent databases"></label><div id="recentList" class="recent-list">Loading recent files…</div></section><p class="compat-note">Projects use local SQLite files. Access table data can be imported or exported to a new .accdb, but existing Access files cannot be edited in place.</p><p id="buildVersion" class="build-version" aria-label="App version">Version loading…</p></div>`;
+    content.innerHTML = `<div class="file-home"><h1>Good ${new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 18 ? 'afternoon' : 'evening'}</h1><section class="home-new"><h2>New</h2><div class="home-templates"><button data-action="new"><span class="template-symbol">▤</span><strong>Blank database</strong></button>${featuredTemplates.map(template => `<button data-action="template-${template.kind}" title="${escapeHtml(template.description)}"><span class="template-symbol">${template.icon}</span><strong>${escapeHtml(template.title)}</strong></button>`).join('')}</div><button class="home-more" data-file-page="new">More templates →</button></section><section class="home-recent"><div class="home-recent-header"><h2>Recent databases</h2><button class="secondary-button" data-action="open">Browse files…</button></div><label class="home-search">⌕ <input id="homeRecentSearch" type="search" aria-label="Search recent databases" placeholder="Search recent databases"></label><div id="recentList" class="recent-list">Loading recent files…</div></section><p class="compat-note">Projects use local SQLite files. Access table data can be imported or exported to a new .accdb, but existing Access files cannot be edited in place.</p><p id="buildVersion" class="build-version" aria-label="App version">Version loading…</p></div>`;
     window.desktop.version().then(version => { if (state.backstagePage === 'home' && $('#buildVersion')) $('#buildVersion').textContent = `Macrosoft Access ${version}`; }).catch(() => {});
     try {
       const recent = await window.desktop.recentFiles();
@@ -152,7 +153,7 @@ async function renderBackstage(page = 'info') {
   } else if (page === 'info') {
     content.innerHTML = `<h1>Database information</h1><div class="file-info"><img class="file-logo" src="${logoUrl}" alt="Macrosoft Access logo" /><div><h2>${escapeHtml(state.fileName || 'No database open')}</h2><p>${escapeHtml(state.filePath || 'Create or open a database to begin.')}</p></div></div><div class="file-actions">${row('ⓘ', 'Properties', 'Tables, records, file size and storage engine.', 'database-info')}${row('◎', 'Compatibility report', 'See preserved, converted and unsupported Access objects.', 'compatibility-report')}${row('⧉', 'Back up database', 'Save a separate portable snapshot.', 'backup')}${row('✓', 'Check integrity', 'Inspect SQLite pages and indexes.', 'integrity-check')}${row('◫', 'Compact database', 'Reclaim unused storage.', 'compact')}</div><p class="compat-note">Access .mdb/.accdb table data can be imported with mdbtools. Projects use SQLite, not the Microsoft Access engine. Export can create a separate .accdb with table data only.</p>`;
   } else if (page === 'new') {
-    content.innerHTML = `<h1>New</h1><p class="page-lede">Start with a blank database or a ready-to-edit local template.</p><div class="template-list">${row('▦', 'Blank database', 'Create your own tables and relationships.', 'new')}${row('♟', 'Contacts', 'People, organisations and contact details.', 'template-contacts')}${row('▤', 'Inventory', 'Products, quantities and stock locations.', 'template-inventory')}${row('✓', 'Tasks', 'Track tasks, owners, priorities and due dates.', 'template-tasks')}</div>`;
+    content.innerHTML = `<h1>New</h1><p class="page-lede">Start with a blank database or a ready-to-edit local template.</p><div class="template-list">${row('▦', 'Blank database', 'Create your own tables and relationships.', 'new')}${templates.map(template => row(template.icon, template.title, template.description, `template-${template.kind}`)).join('')}</div>`;
   } else if (page === 'open') {
     content.innerHTML = `<h1>Open</h1><p class="page-lede"><button class="primary-button" data-action="open">Browse files…</button></p><h2>Recent databases</h2><div id="recentList" class="recent-list">Loading recent files…</div>`;
     try {
@@ -178,19 +179,22 @@ function databaseSetting(key, fallback) {
 }
 
 async function createTemplate(kind) {
-  if (!(await newDatabase(true))) return;
-  const definitions = {
-    contacts: `CREATE TABLE Contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, organisation TEXT, email TEXT, phone TEXT, notes TEXT);`,
-    inventory: `CREATE TABLE Products (id INTEGER PRIMARY KEY AUTOINCREMENT, sku TEXT UNIQUE, product_name TEXT NOT NULL, quantity INTEGER NOT NULL DEFAULT 0, location TEXT, unit_price REAL);`,
-    tasks: `CREATE TABLE Tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, owner TEXT, priority TEXT DEFAULT 'Normal', due_date TEXT, completed INTEGER NOT NULL DEFAULT 0);`
-  };
-  if (!definitions[kind]) return;
-  state.db.run(definitions[kind]);
-  state.fileName = `${kind[0].toUpperCase()}${kind.slice(1)}.macrodb`;
-  markDirty(); refreshObjects();
-  openObject('table', kind === 'contacts' ? 'Contacts' : kind === 'inventory' ? 'Products' : 'Tasks');
-  closeBackstage();
-  toast(`${kind} template created`);
+  const template = templates.find(item => item.kind === kind);
+  if (!template || !(await newDatabase(true))) return;
+  try {
+    state.db.run('BEGIN');
+    state.db.exec(template.sql);
+    state.db.run('COMMIT');
+    state.fileName = `${template.title}.macrodb`;
+    markDirty(); refreshObjects();
+    openObject('table', template.table);
+    closeBackstage();
+    toast(`${template.title} template created`);
+  } catch (error) {
+    try { state.db.run('ROLLBACK'); } catch { /* Transaction already closed. */ }
+    refreshObjects();
+    toast(`Could not create template: ${error.message}`, 'error');
+  }
 }
 
 async function newDatabase(fromTemplate = false) {
@@ -1324,7 +1328,7 @@ async function pasteCell() {
 async function performAction(action) {
   const actions = {
     new: () => newDatabase(), open: () => openDatabase(), save: () => saveDatabase(false), 'save-as': () => saveDatabase(true),
-    'template-contacts': () => createTemplate('contacts'), 'template-inventory': () => createTemplate('inventory'), 'template-tasks': () => createTemplate('tasks'),
+    ...Object.fromEntries(templates.map(template => [`template-${template.kind}`, () => createTemplate(template.kind)])),
     options: () => showBackstage('options'), help: () => showBackstage('help'), 'import-database': chooseAccessImport,
     'close-database': closeDatabase, 'close-file': closeBackstage, 'request-quit': requestQuit,
     'create-table': () => createTable(), 'create-table-design': () => createTable('design'), 'new-record': () => addRecord($('.datasheet')?.dataset.table),
@@ -1356,7 +1360,7 @@ async function performAction(action) {
 const paletteCommands = [
   ['New database', 'new', 'File'], ['Open database', 'open', 'File'],
   ['Save database', 'save', 'File'], ['Save As', 'save-as', 'File'], ['Options', 'options', 'File'],
-  ['Contacts template', 'template-contacts', 'New'], ['Inventory template', 'template-inventory', 'New'], ['Tasks template', 'template-tasks', 'New'],
+  ...templates.map(template => [`${template.title} template`, `template-${template.kind}`, 'New']),
   ['Create table', 'create-table', 'Create'], ['Import CSV', 'import-csv', 'External Data'],
   ['Export CSV', 'export-csv', 'External Data'], ['Export PDF', 'export-pdf', 'External Data'], ['Export Access table data', 'export-access', 'External Data'],
   ['SQL query', 'sql-query', 'Create'], ['Visual query designer', 'query-design', 'Create'],
