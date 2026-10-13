@@ -25,6 +25,7 @@ const state = {
   lastResults: null,
   commandSelection: 0,
   filter: null,
+  sort: null,
   importReport: null,
   backstagePage: 'info',
   settings: { theme: 'light', density: 'compact', confirmActions: true, rows: 1000, sqlDialect: 'sqlite' }
@@ -201,6 +202,8 @@ async function newDatabase(fromTemplate = false) {
   state.filePath = null;
   state.fileName = 'Untitled.macrodb';
   state.filter = null;
+  state.sort = null;
+  state.rowSelection = null;
   state.importReport = null;
   state.tabs = [];
   state.activeTab = null;
@@ -371,6 +374,8 @@ function finishOpen(message) {
   state.activeTab = null;
   state.selectedObject = null;
   state.filter = null;
+  state.sort = null;
+  state.rowSelection = null;
   markDirty(false);
   refreshObjects();
   renderTabs();
@@ -403,6 +408,8 @@ function closeDatabase() {
   state.filePath = null;
   state.fileName = null;
   state.filter = null;
+  state.sort = null;
+  state.rowSelection = null;
   state.importReport = null;
   state.tabs = [];
   state.activeTab = null;
@@ -627,11 +634,55 @@ function renderDatasheet(table) {
     const columns = getColumns(table);
     const where = state.filter?.table === table ? ` WHERE CAST(${quoteId(state.filter.field)} AS TEXT) LIKE ?` : '';
     const params = where ? [`%${state.filter.term}%`] : [];
-    const rows = rowsFromExec(`SELECT rowid AS __rowid__, * FROM ${quoteId(table)}${where} LIMIT ${Number(state.settings.rows) || 1000}`, params);
+    const sortField = state.sort?.table === table ? columns[0]?.name : null;
+    const order = sortField ? ` ORDER BY ${quoteId(sortField)} ${state.sort.ascending ? 'ASC' : 'DESC'}` : '';
+    const rows = rowsFromExec(`SELECT rowid AS __rowid__, * FROM ${quoteId(table)}${where}${order} LIMIT ${Number(state.settings.rows) || 1000}`, params);
     state.lastResults = { name: table, columns: columns.map(c => c.name), rows };
-    $('#documentSurface').innerHTML = `<div class="datasheet-wrap"><table class="datasheet" data-table="${escapeHtml(table)}"><thead><tr><th class="row-selector"></th>${columns.map(c => `<th title="${escapeHtml(c.type || 'ANY')}">${escapeHtml(c.name)}${c.pk ? ' 🔑' : ''}</th>`).join('')}<th><button class="datasheet-add-field" data-action="add-field" title="Open Table Design to add a field">Click to Add ▾</button></th></tr></thead><tbody>${rows.map((row, index) => `<tr data-rowid="${escapeHtml(row.__rowid__)}"><td class="row-selector">${index + 1}</td>${columns.map(c => `<td><input class="cell-input" data-column="${escapeHtml(c.name)}" value="${escapeHtml(row[c.name])}" aria-label="${escapeHtml(c.name)}, row ${index + 1}"></td>`).join('')}<td></td></tr>`).join('')}<tr class="new-row" data-new-row><td class="row-selector">＊</td>${columns.map(c => `<td><input class="cell-input" data-column="${escapeHtml(c.name)}" placeholder="${c.pk ? '(AutoNumber)' : '(New)'}" aria-label="New ${escapeHtml(c.name)}"></td>`).join('')}<td></td></tr></tbody></table></div>`;
-    setStatus(state.filter?.table === table ? `Filtered: ${state.filter.field} contains “${state.filter.term}”` : 'Datasheet View', `${rows.length} record${rows.length === 1 ? '' : 's'}`);
+    $('#documentSurface').innerHTML = `<div class="datasheet-shell"><div class="datasheet-wrap"><table class="datasheet" data-table="${escapeHtml(table)}"><thead><tr><th class="row-selector"></th>${columns.map(c => `<th title="${escapeHtml(c.type || 'ANY')}">${escapeHtml(c.name)}${c.pk ? ' 🔑' : ''}</th>`).join('')}<th><button class="datasheet-add-field" data-action="add-field" title="Open Table Design to add a field">Click to Add ▾</button></th></tr></thead><tbody>${rows.map((row, index) => `<tr data-rowid="${escapeHtml(row.__rowid__)}"><td class="row-selector">${index + 1}</td>${columns.map(c => `<td><input class="cell-input" data-column="${escapeHtml(c.name)}" value="${escapeHtml(row[c.name])}" aria-label="${escapeHtml(c.name)}, row ${index + 1}"></td>`).join('')}<td></td></tr>`).join('')}<tr class="new-row" data-new-row><td class="row-selector">＊</td>${columns.map(c => `<td><input class="cell-input" data-column="${escapeHtml(c.name)}" placeholder="${c.pk ? '(AutoNumber)' : '(New)'}" aria-label="New ${escapeHtml(c.name)}"></td>`).join('')}<td></td></tr></tbody></table></div><nav class="datasheet-nav" aria-label="Datasheet record navigation"><span>Record:</span><button data-record-nav="first" aria-label="First record" title="First record">|‹</button><button data-record-nav="previous" aria-label="Previous record" title="Previous record">‹</button><span class="datasheet-position" aria-live="polite"></span><button data-record-nav="next" aria-label="Next record" title="Next record">›</button><button data-record-nav="last" aria-label="Last record" title="Last record">›|</button><button data-record-nav="new" aria-label="New record" title="New record">＊</button><span class="datasheet-filter-label">${state.filter?.table === table ? `Filtered by ${escapeHtml(state.filter.field)}` : 'No filter'}</span>${state.filter?.table === table ? '<button data-action="clear-filter" title="Clear filter">× Clear</button>' : ''}<label class="datasheet-find">⌕ <input id="datasheetSearch" type="search" aria-label="Find in visible records" placeholder="Search"></label></nav></div>`;
+    const previousRow = state.rowSelection?.table === table ? state.rowSelection.rowid : null;
+    const selectedIndex = previousRow == null ? 0 : rows.findIndex(row => String(row.__rowid__) === String(previousRow));
+    selectDatasheetRow(selectedIndex < 0 ? 0 : selectedIndex, false);
+    setStatus(state.filter?.table === table ? `Filtered: ${state.filter.field} contains “${state.filter.term}”` : 'Datasheet View', `${rows.length} record${rows.length === 1 ? '' : 's'}${rows.length === Number(state.settings.rows) ? ' (display limit)' : ''}`);
   } catch (error) { showError(error); }
+}
+
+function datasheetRows() { return $$('.datasheet tbody tr[data-rowid]'); }
+
+function selectDatasheetRow(index, focus = true) {
+  const rows = datasheetRows();
+  const position = $('#documentSurface .datasheet-position');
+  if (!position) return;
+  $$('.datasheet tbody tr.selected').forEach(row => row.classList.remove('selected'));
+  const selected = rows[index];
+  position.textContent = `${selected ? index + 1 : 0} of ${rows.length}`;
+  const nav = $('.datasheet-nav');
+  for (const [action, disabled] of Object.entries({ first: !selected || index === 0, previous: !selected || index === 0, next: !selected || index === rows.length - 1, last: !selected || index === rows.length - 1 })) {
+    nav.querySelector(`[data-record-nav="${action}"]`).disabled = disabled;
+  }
+  if (!selected) { state.rowSelection = null; return; }
+  selected.classList.add('selected');
+  state.rowSelection = { table: $('.datasheet').dataset.table, rowid: selected.dataset.rowid };
+  if (focus) { selected.scrollIntoView({ block: 'nearest' }); selected.querySelector('.cell-input')?.focus({ preventScroll: true }); }
+}
+
+function navigateDatasheet(action) {
+  if (action === 'new') return addRecord($('.datasheet')?.dataset.table);
+  const rows = datasheetRows();
+  if (!rows.length) return;
+  const index = Math.max(0, rows.findIndex(row => row.classList.contains('selected')));
+  const target = { first: 0, previous: Math.max(0, index - 1), next: Math.min(rows.length - 1, index + 1), last: rows.length - 1 }[action];
+  if (target !== undefined) selectDatasheetRow(target);
+}
+
+function searchDatasheet(term) {
+  const needle = term.trim().toLocaleLowerCase();
+  if (!needle) return;
+  const rows = datasheetRows();
+  const index = rows.findIndex(row => $$('.cell-input', row).some(input => input.value.toLocaleLowerCase().includes(needle)));
+  if (index < 0) { setStatus('No matching record in the visible datasheet'); return; }
+  selectDatasheetRow(index, false);
+  rows[index].scrollIntoView({ block: 'nearest' });
+  setStatus(`Found record ${index + 1} of ${rows.length}`);
 }
 
 function updateCell(input) {
@@ -649,6 +700,7 @@ function updateCell(input) {
     try {
       if (entries.length) state.db.run(`INSERT INTO ${quoteId(table)} (${entries.map(([name]) => quoteId(name)).join(',')}) VALUES (${entries.map(() => '?').join(',')})`, entries.map(([, value]) => value));
       else state.db.run(`INSERT INTO ${quoteId(table)} DEFAULT VALUES`);
+      state.rowSelection = { table, rowid: String(rowsFromExec('SELECT last_insert_rowid() AS id')[0].id) };
       markDirty(); renderDatasheet(table); setStatus('Record added');
     } catch (error) { toast(error.message, 'error'); }
     return;
@@ -674,6 +726,7 @@ function deleteSelectedRecord() {
   const table = $('.datasheet').dataset.table;
   if (!window.confirm('Delete the selected record?')) return;
   state.db.run(`DELETE FROM ${quoteId(table)} WHERE rowid=?`, [selected.dataset.rowid]);
+  state.rowSelection = null;
   markDirty();
   renderDatasheet(table);
 }
@@ -1012,11 +1065,9 @@ function findRecord() {
   if (!table) return toast('Open a table to find records.', 'error');
   const term = window.prompt('Find text in visible records:');
   if (!term) return;
-  const row = $$('.datasheet tbody tr:not(.new-row)').find(item => item.textContent.toLowerCase().includes(term.toLowerCase()) || $$('.cell-input', item).some(input => input.value.toLowerCase().includes(term.toLowerCase())));
-  if (!row) return toast('No matching record in the current view.', 'error');
-  row.scrollIntoView({ block: 'center' });
-  row.classList.add('selected');
-  row.querySelector('.cell-input')?.focus();
+  const index = datasheetRows().findIndex(row => $$('.cell-input', row).some(input => input.value.toLocaleLowerCase().includes(term.toLocaleLowerCase())));
+  if (index < 0) return toast('No matching record in the current view.', 'error');
+  selectDatasheetRow(index);
 }
 
 function renameObject(type, name) {
@@ -1315,11 +1366,8 @@ $('#commandResults').addEventListener('click', event => {
 function sortDatasheet(ascending) {
   const table = $('.datasheet[data-table]');
   if (!table) return;
-  const firstColumn = getColumns(table.dataset.table)[0]?.name;
-  if (!firstColumn) return;
-  const rows = rowsFromExec(`SELECT rowid AS __rowid__, * FROM ${quoteId(table.dataset.table)} ORDER BY ${quoteId(firstColumn)} ${ascending ? 'ASC' : 'DESC'} LIMIT 1000`);
-  const columns = getColumns(table.dataset.table);
-  table.querySelector('tbody').innerHTML = rows.map((row, index) => `<tr data-rowid="${escapeHtml(row.__rowid__)}"><td class="row-selector">${index + 1}</td>${columns.map(c => `<td><input class="cell-input" data-column="${escapeHtml(c.name)}" value="${escapeHtml(row[c.name])}"></td>`).join('')}<td></td></tr>`).join('') + `<tr class="new-row" data-new-row><td class="row-selector">＊</td>${columns.map(c => `<td><input class="cell-input" data-column="${escapeHtml(c.name)}" placeholder="${c.pk ? '(AutoNumber)' : '(New)'}"></td>`).join('')}<td></td></tr>`;
+  state.sort = { table: table.dataset.table, ascending };
+  renderDatasheet(table.dataset.table);
 }
 
 // Ribbon and delegated workspace interactions
@@ -1367,6 +1415,8 @@ document.addEventListener('click', event => {
       saveReportDesign(item.name, settings);
     }
   }
+  const recordNav = event.target.closest('[data-record-nav]');
+  if (recordNav) navigateDatasheet(recordNav.dataset.recordNav);
   const quickField = event.target.closest('[data-quick-field]');
   if (quickField) quickAddField(quickField.dataset.quickField);
   const action = event.target.closest('[data-action]')?.dataset.action;
@@ -1377,8 +1427,8 @@ document.addEventListener('click', event => {
   if (close) { event.stopPropagation(); closeTab(close.dataset.closeTab); return; }
   const tab = event.target.closest('[data-tab-id]');
   if (tab) { state.activeTab = tab.dataset.tabId; renderTabs(); renderActiveTab(); }
-  const row = event.target.closest('.datasheet tbody tr:not(.new-row)');
-  if (row) { $$('.datasheet tr.selected').forEach(r => r.classList.remove('selected')); row.classList.add('selected'); }
+  const row = event.target.closest('.datasheet tbody tr[data-rowid]');
+  if (row) selectDatasheetRow(datasheetRows().indexOf(row), false);
   if (event.target.closest('[data-new-row]')) addRecord($('.datasheet')?.dataset.table);
 });
 
@@ -1466,6 +1516,9 @@ document.addEventListener('change', event => {
 });
 
 $('#objectSearch').addEventListener('input', event => renderObjectTree(event.target.value));
+document.addEventListener('input', event => {
+  if (event.target.id === 'datasheetSearch') searchDatasheet(event.target.value);
+});
 document.addEventListener('input', event => {
   if (event.target.id === 'homeRecentSearch') {
     const term = event.target.value.trim().toLocaleLowerCase();
