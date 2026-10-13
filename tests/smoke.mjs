@@ -46,6 +46,15 @@ try {
   await evaluate('document.querySelector("[data-action=sql-query]").click()');
   await evaluate(`(() => { document.querySelector('#sqlEditor').value = 'SELECT name FROM Customers'; document.querySelector('[data-action=run-query]').click(); })()`);
   assert.equal(await evaluate('document.querySelector("#queryResults tbody td:last-child")?.textContent'), 'Alex Smith');
+  await evaluate(`(() => { const dialect=document.querySelector('#queryDialect'); dialect.value='access'; dialect.dispatchEvent(new Event('change',{bubbles:true})); document.querySelector('#sqlEditor').value="SELECT TOP 1 Left(name, 2) & '!' FROM Customers"; document.querySelector('[data-action=run-query]').click(); })()`);
+  assert.equal(await evaluate('document.querySelector("#queryResults tbody td:last-child")?.textContent'), 'Al!');
+  await evaluate('document.querySelector("[data-action=preview-sql]").click()');
+  assert.equal(await evaluate('document.querySelector("#queryResults")?.textContent.includes("LIMIT 1")'), true);
+  await evaluate(`(() => { document.querySelector('[data-action=save-query]').click(); document.querySelector('#queryName').value='AccessExample'; document.querySelector('#confirmSaveQuery').click(); })()`);
+  assert.equal(await evaluate('document.querySelectorAll("[data-close-tab]").length'), 2);
+  await evaluate(`(() => { document.querySelectorAll('[data-close-tab]')[1].click(); Array.from(document.querySelectorAll('[data-object-type]')).find(node => node.dataset.objectName === 'AccessExample').click(); })()`);
+  assert.equal(await evaluate('document.querySelector("#queryDialect")?.value'), 'access');
+  assert.equal(await evaluate('document.querySelector("#sqlEditor")?.value'), "SELECT TOP 1 Left(name, 2) & '!' FROM Customers");
   await evaluate(`(() => { document.querySelector('#sqlEditor').value = "SELECT value FROM _mda_meta WHERE key='schema_version'"; document.querySelector('[data-action=run-query]').click(); })()`);
   assert.equal(await evaluate('document.querySelector("#queryResults tbody td:last-child")?.textContent'), '1');
   await evaluate('document.querySelector("[data-action=compatibility-report]").click()');

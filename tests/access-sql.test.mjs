@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import initSqlJs from 'sql.js';
+import { translateAccessSql, registerAccessFunctions } from '../src/access-sql.js';
+
+const SQL = await initSqlJs();
+const db = new SQL.Database();
+registerAccessFunctions(db);
+db.run('CREATE TABLE People (name TEXT, age INTEGER)');
+db.run('INSERT INTO People VALUES (?, ?)', ['Alex', 24]);
+const value = sql => db.exec(translateAccessSql(sql))[0].values[0][0];
+assert.equal(value("SELECT Left(name, 2) FROM People"), 'Al');
+assert.equal(value("SELECT Right(name, 0) FROM People"), '');
+assert.equal(value("SELECT Mid(name, 2, 2) FROM People"), 'le');
+assert.equal(value("SELECT Nz(NULL, 'missing')"), 'missing');
+assert.equal(value('SELECT Nz(NULL)'), '');
+assert.equal(value("SELECT IIf(age > 18, 'adult', 'minor') FROM People"), 'adult');
+assert.equal(value("SELECT Left(name, 2) & '!' FROM People"), 'Al!');
+assert.equal(value('SELECT TOP 1 name FROM People'), 'Alex');
+assert.equal(value("SELECT InStr('Alphabet', 'pha')"), 3);
+assert.equal(value("SELECT 'Left(x) & TOP 2'"), 'Left(x) & TOP 2');
+assert.equal(value('SELECT [Left], "Right" FROM (SELECT 1 AS [Left], 2 AS "Right")'), 1);
+assert.equal(translateAccessSql('SELECT /* TOP 3 */ TOP 2 name FROM People'), 'SELECT /* TOP 3 */   name FROM People LIMIT 2;');
+assert.throws(() => translateAccessSql('SELECT TOP 2 name FROM People LIMIT 3'), /either Access TOP or SQLite LIMIT/);
+assert.throws(() => translateAccessSql('SELECT TOP 1 name FROM People; DELETE FROM People'), /one statement/);
+assert.throws(() => translateAccessSql('SELECT TOP 1 name FROM People -- last comment '), /newline/);
+assert.equal(value("SELECT Nz(Left(NULL, 2), 'fallback')"), 'fallback');
+db.close();
+console.log('PASS: Access SQL TOP and expression adapter, quoted-text safety and SQL.js functions');

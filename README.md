@@ -32,7 +32,7 @@ The installer will be in `release/`. The app icon and UI logo are generated from
 - Local application settings (light/dark theme, density, query result limit, action confirmation) and a per-database default table view.
 - Local SQLite-backed `.macrodb`, `.sqlite` and `.db` files; create, open, save and save-as. Internal project metadata is versioned and rejects newer unsupported versions.
 - Tables: create fields using SQLite types and constraints, inspect schema, add fields, add indexes, edit cells and records, sort and delete records.
-- Queries: SQLite SQL editor, saved queries, results grid, basic single-table visual field picker, confirmation for action SQL.
+- Queries: SQLite SQL editor, saved queries, results grid, basic single-table visual field picker, confirmation for action SQL. Optional Access-style SQL subset with `SELECT TOP`, `&` concatenation, `Left`, `Right`, `Mid`, `Nz`, `IIf`, `InStr`, `Date`, `Now` and `Len`; the original SQL and its dialect are saved with each query.
 - Generated single-record forms with a saved Design View (caption, control type, visibility, required setting, ordering), record entry/navigation, and read-only printable tabular reports with PDF export.
 - Relationship diagram with **metadata-only** relationship declarations, not enforced foreign keys. For enforced constraints, create SQLite foreign keys using SQL.
 - CSV import/export; best-effort `.mdb` and `.accdb` **table data import** using `mdbtools`, with a saved conversion report listing imported tables, row counts and known losses.
@@ -51,6 +51,8 @@ The **External Data → Import Access** command accepts `.mdb` and `.accdb` file
 CSV exports can be imported into Microsoft Access as data. They are not native `.accdb` files and do not transfer forms or application logic.
 
 When `mdb-schema` can inspect a table, integer and floating-point fields are mapped to SQLite `INTEGER` or `REAL`; currency, decimal, date/time and text fields remain `TEXT` to avoid changing precision or interpreting locale-specific dates. If inspection fails, columns default to `TEXT`. Duplicate and blank headers are renamed for SQLite; the compatibility report records target table names and field mappings. Import leaves the original file untouched. It does **not** preserve Access forms, reports, macros, VBA, attachment semantics, query definitions, indexes, relationships, validation rules or every Access field type. It cannot save or round-trip `.accdb` files. Microsoft's proprietary Access engine is not provided for macOS. Imported data is saved into a new `.macrodb`, `.sqlite` or `.db` file.
+
+Access-style SQL is **not** the complete ACE/Jet dialect: crosstabs, parameter prompts, VBA calls, Access wildcards, many date/format functions and pass-through queries are not implemented. Use Preview SQL to inspect the translated SQLite statement before running it.
 
 ## Roadmap status
 

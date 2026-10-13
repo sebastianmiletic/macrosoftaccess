@@ -5,6 +5,7 @@ import { migrateMetadata, METADATA_VERSION } from './metadata.js';
 import { createImportReport, uniqueHeaders } from './compatibility.js';
 import { defaultFormSettings, normalizeFormSettings, FORM_CONTROL_TYPES } from './form-model.js';
 import { fieldMapping } from './access-schema.js';
+import { translateAccessSql, registerAccessFunctions } from './access-sql.js';
 
 const SQL = await initSqlJs({ locateFile: () => wasmUrl });
 
@@ -24,7 +25,7 @@ const state = {
   filter: null,
   importReport: null,
   backstagePage: 'info',
-  settings: { theme: 'light', density: 'compact', confirmActions: true, rows: 1000 }
+  settings: { theme: 'light', density: 'compact', confirmActions: true, rows: 1000, sqlDialect: 'sqlite' }
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -82,7 +83,7 @@ function refreshObjects() {
   }
   state.objects.tables = rowsFromExec("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_mda_%' ORDER BY name").map(r => r.name);
   for (const type of ['query', 'form', 'report']) {
-    state.objects[`${type}s`] = rowsFromExec('SELECT name, source, settings FROM _mda_objects WHERE type=? ORDER BY name', [type]);
+    state.objects[type === 'query' ? 'queries' : `${type}s`] = rowsFromExec('SELECT name, source, settings FROM _mda_objects WHERE type=? ORDER BY name', [type]);
   }
   renderObjectTree();
 }
@@ -148,7 +149,7 @@ async function renderBackstage(page = 'info') {
     content.innerHTML = `<h1>Export</h1><p class="page-lede">Export the current table, query result or report.</p><div class="file-actions">${row('CSV', 'CSV', 'Export current result data as comma-separated values.', 'export-csv')}${row('PDF', 'PDF', 'Save the active report or document as a PDF.', 'export-pdf')}${row('⧉', 'Database backup', 'Export a complete SQLite database snapshot.', 'backup')}</div>`;
   } else if (page === 'options') {
     const s = state.settings;
-    content.innerHTML = `<h1>Options</h1><p class="page-lede">Application preferences are saved on this Mac.</p><div class="settings-group"><h2>Appearance</h2><label>Theme<select data-setting="theme"><option value="light" ${s.theme === 'light' ? 'selected' : ''}>Light</option><option value="dark" ${s.theme === 'dark' ? 'selected' : ''}>Dark</option></select></label><label>Interface density<select data-setting="density"><option value="compact" ${s.density === 'compact' ? 'selected' : ''}>Compact</option><option value="comfortable" ${s.density === 'comfortable' ? 'selected' : ''}>Comfortable</option></select></label></div><div class="settings-group"><h2>Editing</h2><label>Query result limit<select data-setting="rows"><option value="100" ${s.rows === 100 ? 'selected' : ''}>100 rows</option><option value="1000" ${s.rows === 1000 ? 'selected' : ''}>1,000 rows</option><option value="10000" ${s.rows === 10000 ? 'selected' : ''}>10,000 rows</option></select></label><label class="check-setting"><input type="checkbox" data-setting="confirmActions" ${s.confirmActions ? 'checked' : ''}> Confirm SQL that modifies data or schema</label></div><div class="settings-group"><h2>Current database</h2><label>Default table view<select data-db-setting="defaultTableView" ${state.db ? '' : 'disabled'}><option value="datasheet" ${databaseSetting('defaultTableView', 'datasheet') === 'datasheet' ? 'selected' : ''}>Datasheet</option><option value="design" ${databaseSetting('defaultTableView', 'datasheet') === 'design' ? 'selected' : ''}>Design</option></select></label><p>${state.db ? 'Saved inside this database.' : 'Open a database to edit its settings.'}</p></div>`;
+    content.innerHTML = `<h1>Options</h1><p class="page-lede">Application preferences are saved on this Mac.</p><div class="settings-group"><h2>Appearance</h2><label>Theme<select data-setting="theme"><option value="light" ${s.theme === 'light' ? 'selected' : ''}>Light</option><option value="dark" ${s.theme === 'dark' ? 'selected' : ''}>Dark</option></select></label><label>Interface density<select data-setting="density"><option value="compact" ${s.density === 'compact' ? 'selected' : ''}>Compact</option><option value="comfortable" ${s.density === 'comfortable' ? 'selected' : ''}>Comfortable</option></select></label></div><div class="settings-group"><h2>Editing</h2><label>Query result limit<select data-setting="rows"><option value="100" ${s.rows === 100 ? 'selected' : ''}>100 rows</option><option value="1000" ${s.rows === 1000 ? 'selected' : ''}>1,000 rows</option><option value="10000" ${s.rows === 10000 ? 'selected' : ''}>10,000 rows</option></select></label><label class="check-setting"><input type="checkbox" data-setting="confirmActions" ${s.confirmActions ? 'checked' : ''}> Confirm SQL that modifies data or schema</label></div><div class="settings-group"><h2>Queries</h2><label>Default SQL dialect<select data-setting="sqlDialect"><option value="sqlite" ${s.sqlDialect !== 'access' ? 'selected' : ''}>SQLite</option><option value="access" ${s.sqlDialect === 'access' ? 'selected' : ''}>Access-style subset</option></select></label><p>Access-style mode translates selected expressions and SELECT TOP. It does not implement the full Access SQL dialect.</p></div><div class="settings-group"><h2>Current database</h2><label>Default table view<select data-db-setting="defaultTableView" ${state.db ? '' : 'disabled'}><option value="datasheet" ${databaseSetting('defaultTableView', 'datasheet') === 'datasheet' ? 'selected' : ''}>Datasheet</option><option value="design" ${databaseSetting('defaultTableView', 'datasheet') === 'design' ? 'selected' : ''}>Design</option></select></label><p>${state.db ? 'Saved inside this database.' : 'Open a database to edit its settings.'}</p></div>`;
   } else if (page === 'help') {
     content.innerHTML = `<h1>Help</h1><div class="file-actions"><h2>Keyboard shortcuts</h2><p>⌘N New database · ⌘O Open · ⌘S Save · ⌘K Search commands · ⌘↵ Run SQL · ⌘, Options</p><h2>Compatibility</h2><p>Macrosoft Access is a local SQLite-based database app. It is not Microsoft Access. Access table-data import requires mdbtools; .accdb saving, VBA, and native Access forms and reports are not available.</p><h2>Data safety</h2><p>Save regularly and keep backups of important databases. SQL commands can change or delete data.</p></div>`;
   }
@@ -179,6 +180,7 @@ async function newDatabase(fromTemplate = false) {
   if (!(await confirmDiscard())) return false;
   state.db?.close();
   state.db = new SQL.Database();
+  registerAccessFunctions(state.db);
   createMetadata();
   state.filePath = null;
   state.fileName = 'Untitled.macrodb';
@@ -226,7 +228,7 @@ async function openDatabase(requestedPath) {
   try { incoming = new SQL.Database(bytes); }
   catch (error) { toast(`Could not open database: ${error.message}`, 'error'); return; }
   let migrated;
-  try { migrated = migrateMetadata(incoming); }
+  try { registerAccessFunctions(incoming); migrated = migrateMetadata(incoming); }
   catch (error) {
     incoming.close();
     toast(`Could not open database: ${error.message}`, 'error');
@@ -254,6 +256,7 @@ async function importAccessDatabase(file) {
   }
   const incoming = new SQL.Database();
   try {
+    registerAccessFunctions(incoming);
     migrateMetadata(incoming);
     let count = 0;
     const details = [];
@@ -551,19 +554,26 @@ function deleteSelectedRecord() {
   renderDatasheet(table);
 }
 
-function renderSqlWorkspace(title, sql = 'SELECT *\nFROM ' + (state.objects.tables[0] ? quoteId(state.objects.tables[0]) : 'table_name') + '\nLIMIT 100;') {
+function renderSqlWorkspace(title, sql = 'SELECT *\nFROM ' + (state.objects.tables[0] ? quoteId(state.objects.tables[0]) : 'table_name') + '\nLIMIT 100;', dialect = state.settings.sqlDialect) {
   const id = `query:${title}`;
-  if (!state.tabs.some(tab => tab.id === id)) state.tabs.push({ id, type: 'query', name: title, transient: title === 'SQL Query' });
+  let tab = state.tabs.find(item => item.id === id);
+  if (!tab) {
+    tab = { id, type: 'query', name: title, transient: title === 'SQL Query', dialect: dialect === 'access' ? 'access' : 'sqlite' };
+    state.tabs.push(tab);
+  }
+  if (!tab.dialect) tab.dialect = dialect === 'access' ? 'access' : 'sqlite';
   state.activeTab = id;
   renderTabs();
-  $('#documentSurface').innerHTML = `<div class="sql-workspace"><section class="editor-pane"><div class="local-toolbar"><button class="tool-button primary" data-action="run-query">▶ Run</button><button class="tool-button" data-action="save-query">▣ Save</button><button class="tool-button" data-action="query-design">⚒ Design</button><span style="flex:1"></span><span>SQL View</span></div><textarea id="sqlEditor" class="sql-editor" spellcheck="false" aria-label="SQL editor">${escapeHtml(sql)}</textarea></section><section id="queryResults" class="results-pane"><div class="message-panel">Press Run or ⌘↵ to execute the query.</div></section></div>`;
-  setStatus('SQL View');
+  $('#documentSurface').innerHTML = `<div class="sql-workspace"><section class="editor-pane"><div class="local-toolbar"><button class="tool-button primary" data-action="run-query">▶ Run</button><button class="tool-button" data-action="save-query">▣ Save</button><button class="tool-button" data-action="query-design">⚒ Design</button><button class="tool-button" data-action="preview-sql">⌕ Preview SQL</button><span style="flex:1"></span><label for="queryDialect">Dialect</label><select id="queryDialect" data-query-dialect aria-label="Query dialect"><option value="sqlite" ${tab.dialect !== 'access' ? 'selected' : ''}>SQLite</option><option value="access" ${tab.dialect === 'access' ? 'selected' : ''}>Access-style subset</option></select></div><textarea id="sqlEditor" class="sql-editor" spellcheck="false" aria-label="SQL editor">${escapeHtml(sql)}</textarea></section><section id="queryResults" class="results-pane"><div class="message-panel">Press Run or ⌘↵ to execute the query. Access-style mode supports selected expressions and SELECT TOP, not the complete Access SQL dialect.</div></section></div>`;
+  setStatus(tab.dialect === 'access' ? 'Access-style SQL View' : 'SQLite SQL View');
 }
 
 function renderQuery(name) {
   if (name === 'SQL Query') return renderSqlWorkspace(name);
   const item = state.objects.queries.find(q => q.name === name);
-  renderSqlWorkspace(name, item?.source || 'SELECT 1;');
+  let settings = {};
+  try { settings = JSON.parse(item?.settings || '{}'); } catch { /* Legacy query */ }
+  renderSqlWorkspace(name, item?.source || 'SELECT 1;', settings.dialect || 'sqlite');
 }
 
 function runQuery() {
@@ -572,12 +582,13 @@ function runQuery() {
     if ($('#queryCanvas')) buildVisualQuery();
     return;
   }
-  const sql = editor.value.trim();
-  if (!sql) return;
+  const source = editor.value.trim();
+  if (!source) return;
   const started = performance.now();
-  const isAction = /\b(INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|REPLACE|VACUUM)\b/i.test(sql);
-  if (isAction && state.settings.confirmActions && !window.confirm('This query may change data or schema. Run it?')) return;
   try {
+    const sql = $('#queryDialect')?.value === 'access' ? translateAccessSql(source) : source;
+    const isAction = /\b(INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|REPLACE|VACUUM)\b/i.test(sql);
+    if (isAction && state.settings.confirmActions && !window.confirm('This query may change data or schema. Run it?')) return;
     const resultSets = state.db.exec(sql);
     const elapsed = Math.round(performance.now() - started);
     if (!resultSets.length) {
@@ -601,6 +612,15 @@ function resultTableHtml(columns, values) {
   return `<div class="datasheet-wrap"><table class="datasheet"><thead><tr><th class="row-selector"></th>${columns.map(c => `<th>${escapeHtml(c)}</th>`).join('')}</tr></thead><tbody>${values.map((row, i) => `<tr><td class="row-selector">${i + 1}</td>${row.map(value => `<td>${escapeHtml(value)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
 }
 
+function previewTranslatedSql() {
+  const sql = $('#sqlEditor')?.value.trim();
+  if (!sql) return;
+  try {
+    $('#queryResults').innerHTML = `<div class="message-panel">${escapeHtml($('#queryDialect')?.value === 'access' ? translateAccessSql(sql) : sql)}</div>`;
+    setStatus('SQL preview; no query executed');
+  } catch (error) { toast(error.message, 'error'); }
+}
+
 function saveCurrentQuery() {
   if (!$('#sqlEditor')) {
     const generated = $('#designSql')?.textContent;
@@ -617,10 +637,11 @@ function confirmSaveQuery(event) {
   const name = $('#queryName').value.trim();
   const source = $('#sqlEditor')?.value || '';
   if (!name) return;
-  state.db.run(`INSERT INTO _mda_objects(type,name,source) VALUES('query',?,?) ON CONFLICT(type,name) DO UPDATE SET source=excluded.source`, [name, source]);
+  const settings = JSON.stringify({ dialect: $('#queryDialect')?.value === 'access' ? 'access' : 'sqlite' });
+  state.db.run(`INSERT INTO _mda_objects(type,name,source,settings) VALUES('query',?,?,?) ON CONFLICT(type,name) DO UPDATE SET source=excluded.source,settings=excluded.settings`, [name, source, settings]);
   $('#saveQueryDialog').close();
   const old = state.tabs.find(tab => tab.id === state.activeTab);
-  if (old) { old.name = name; old.id = `query:${name}`; old.transient = false; state.activeTab = old.id; }
+  if (old) { old.name = name; old.id = `query:${name}`; old.transient = false; old.dialect = $('#queryDialect')?.value === 'access' ? 'access' : 'sqlite'; state.activeTab = old.id; }
   markDirty(); refreshObjects(); renderTabs(); toast(`Query “${name}” saved`);
 }
 
@@ -1040,7 +1061,7 @@ async function performAction(action) {
     'create-table': createTable, 'new-record': () => addRecord($('.datasheet')?.dataset.table),
     'delete-record': deleteSelectedRecord, delete: deleteCurrent, refresh: renderActiveTab,
     'sql-query': () => { if (ensureDb()) renderSqlWorkspace('SQL Query'); },
-    'run-query': runQuery, 'save-query': saveCurrentQuery, 'query-design': renderQueryDesigner,
+    'run-query': runQuery, 'save-query': saveCurrentQuery, 'preview-sql': previewTranslatedSql, 'query-design': renderQueryDesigner,
     'build-query': buildVisualQuery, 'create-form': createForm, 'create-report': createReport,
     'form-design': () => setFormView('design'), 'form-view': () => setFormView('form'),
     'save-form-record': saveFormRecord, 'new-form-record': newFormRecord,
@@ -1214,6 +1235,11 @@ document.addEventListener('change', event => {
       settings.controls[Number(row.dataset.controlIndex)][key] = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
     }
     saveFormDesign(item.name, settings);
+  }
+  if (event.target.matches('[data-query-dialect]')) {
+    const tab = state.tabs.find(item => item.id === state.activeTab);
+    if (tab) tab.dialect = event.target.value;
+    setStatus(event.target.value === 'access' ? 'Access-style SQL subset selected' : 'SQLite SQL selected');
   }
   if (event.target.matches('[data-setting]')) {
     const { setting } = event.target.dataset;

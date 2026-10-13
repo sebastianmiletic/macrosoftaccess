@@ -153,6 +153,8 @@
   .sql-workspace { height: 100%; display: grid; grid-template-rows: minmax(160px, 42%) minmax(0, 1fr); }
   .editor-pane { display: grid; grid-template-rows: 34px minmax(0, 1fr); border-bottom: 1px solid var(--line-strong); }
   .local-toolbar { display: flex; align-items: center; gap: 4px; padding: 0 7px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
+  .local-toolbar #queryDialect { height: 26px; max-width: 150px; font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 4px; }
+  .local-toolbar #queryDialect:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .tool-button { height: 26px; padding: 0 9px; border: 1px solid var(--line-strong); background: var(--surface); border-radius: 2px; }
   .tool-button:hover { background: var(--accent-soft); }
   .tool-button.primary { background: var(--accent); color: oklch(98% 0.01 18); border-color: var(--accent); }
