@@ -4,7 +4,7 @@ This is an implementation tracker, not a statement of parity with any Microsoft 
 
 | Area | Status | Current implementation / gap |
 | --- | --- | --- |
-| macOS shell and startup | Partial | Native window, menus, ribbon-style controls, tabs, search, templates and recent files. No exact Access visual parity or startup form. A native Save/Discard/Cancel close flow is implemented; crash recovery is not. |
+| macOS shell and startup | Partial | Native window, menus, contextual ribbon-style controls, tabs, search, resizable/collapsible navigation and object groups, templates and recent files. Layout tested at normal and compact window widths. No exact Access visual parity or startup form. A native Save/Discard/Cancel close flow is implemented; crash recovery is not. |
 | Project persistence | Partial | Local SQLite files, atomic save, backups, versioned private metadata. No crash recovery, concurrent locking or migration preview. |
 | Tables and datasheets | Partial | Access-inspired compact datasheet and contextual Fields ribbon with working quick-add text, integer, date and boolean fields; explicit Datasheet/Design views; inline field type/default/required settings. Existing fields remain read-only; no full Access type matrix, validation designer, multi-cell selection or undo. |
 | Relationships | Partial | Visual metadata relationships; not enforced by SQLite unless defined explicitly in SQL. |

@@ -38,6 +38,11 @@ const appTitle = 'Macrosoft Access';
 try { Object.assign(state.settings, JSON.parse(localStorage.getItem('macrosoft-access-settings') || '{}')); } catch { /* Invalid old preferences. */ }
 document.documentElement.dataset.theme = state.settings.theme;
 document.documentElement.dataset.density = state.settings.density;
+let collapsedObjectGroups = new Set();
+try {
+  const stored = JSON.parse(localStorage.getItem('macrosoft-access-object-groups') || '[]');
+  if (Array.isArray(stored)) collapsedObjectGroups = new Set(stored);
+} catch { /* Reset invalid navigation preferences. */ }
 
 function toast(message, kind = '') {
   const node = document.createElement('div');
@@ -98,10 +103,11 @@ function renderObjectTree(filter = '') {
     ['Forms', state.objects.forms.map(item => ({ ...item, type: 'form' })), '▣'],
     ['Reports', state.objects.reports.map(item => ({ ...item, type: 'report' })), '▥']
   ];
-  $('#objectTree').innerHTML = groups.map(([title, items, icon]) => {
-    const visible = items.filter(item => item.name.toLowerCase().includes(needle));
-    return `<section class="object-group"><div class="object-group-title"><span>▾</span>${title}<span>(${visible.length})</span></div>${visible.map(item => `<button class="object-row ${state.selectedObject?.type === item.type && state.selectedObject?.name === item.name ? 'selected' : ''}" data-object-type="${item.type}" data-object-name="${escapeHtml(item.name)}"><span class="object-icon">${icon}</span><span>${escapeHtml(item.name)}</span></button>`).join('')}</section>`;
-  }).join('');
+  const visibleGroups = groups.map(([title, items, icon]) => [title, items.filter(item => item.name.toLowerCase().includes(needle)), icon]).filter(([, items]) => items.length);
+  $('#objectTree').innerHTML = visibleGroups.map(([title, items, icon]) => {
+    const collapsed = !needle && collapsedObjectGroups.has(title);
+    return `<section class="object-group"><button class="object-group-title" data-toggle-object-group="${title}" aria-expanded="${!collapsed}"><span class="group-caret">${collapsed ? '▸' : '▾'}</span>${title}<small>${items.length}</small></button>${collapsed ? '' : items.map(item => `<button class="object-row ${state.selectedObject?.type === item.type && state.selectedObject?.name === item.name ? 'selected' : ''}" data-object-type="${item.type}" data-object-name="${escapeHtml(item.name)}"><span class="object-icon">${icon}</span><span>${escapeHtml(item.name)}</span></button>`).join('')}</section>`;
+  }).join('') || `<p class="object-empty">${needle ? 'No matching objects.' : 'No objects yet. Use Create to add a table.'}</p>`;
 }
 
 function updateFileInfo() {
@@ -1220,7 +1226,7 @@ async function performAction(action) {
   const actions = {
     new: () => newDatabase(), open: () => openDatabase(), save: () => saveDatabase(false), 'save-as': () => saveDatabase(true),
     'template-contacts': () => createTemplate('contacts'), 'template-inventory': () => createTemplate('inventory'), 'template-tasks': () => createTemplate('tasks'),
-    options: () => showBackstage('options'), 'import-database': chooseAccessImport,
+    options: () => showBackstage('options'), help: () => showBackstage('help'), 'import-database': chooseAccessImport,
     'close-database': closeDatabase, 'close-file': closeBackstage, 'request-quit': requestQuit,
     'create-table': () => createTable(), 'create-table-design': () => createTable('design'), 'new-record': () => addRecord($('.datasheet')?.dataset.table),
     'delete-record': deleteSelectedRecord, delete: deleteCurrent, refresh: renderActiveTab,
@@ -1328,6 +1334,13 @@ document.addEventListener('click', event => {
   }
   const page = event.target.closest('[data-file-page]')?.dataset.filePage;
   if (page) renderBackstage(page);
+  const group = event.target.closest('[data-toggle-object-group]')?.dataset.toggleObjectGroup;
+  if (group) {
+    if (collapsedObjectGroups.has(group)) collapsedObjectGroups.delete(group);
+    else collapsedObjectGroups.add(group);
+    localStorage.setItem('macrosoft-access-object-groups', JSON.stringify([...collapsedObjectGroups]));
+    renderObjectTree($('#objectSearch').value);
+  }
   const recent = event.target.closest('[data-recent-path]')?.dataset.recentPath;
   if (recent) openDatabase(recent);
   const removed = event.target.closest('[data-remove-recent]')?.dataset.removeRecent;
@@ -1459,10 +1472,56 @@ document.addEventListener('input', event => {
     $$('.recent-row', $('#recentList')).forEach(row => { row.hidden = !row.textContent.toLocaleLowerCase().includes(term); });
   }
 });
-$('#collapseNav').addEventListener('click', () => {
-  $('.navigation-pane').classList.toggle('collapsed');
-  $('#collapseNav').textContent = $('.navigation-pane').classList.contains('collapsed') ? '»' : '«';
+const navigationPane = $('#navigationPane');
+const navResizeHandle = $('#navResizeHandle');
+const defaultNavigationWidth = () => Math.max(122, Math.round(window.innerWidth * 0.085));
+const maximumNavigationWidth = () => Math.max(122, Math.min(400, Math.round(window.innerWidth * 0.36)));
+let navigationWidth = Number(localStorage.getItem('macrosoft-access-nav-width')) || defaultNavigationWidth();
+function resizeNavigation(width, persist = false) {
+  navigationWidth = Math.max(122, Math.min(maximumNavigationWidth(), Math.round(width)));
+  $('.workspace').style.setProperty('--nav-width', `${navigationWidth}px`);
+  navResizeHandle.setAttribute('aria-valuenow', String(navigationWidth));
+  navResizeHandle.setAttribute('aria-valuemax', String(maximumNavigationWidth()));
+  if (persist) localStorage.setItem('macrosoft-access-nav-width', String(navigationWidth));
+}
+function collapseNavigation(collapsed) {
+  navigationPane.classList.toggle('collapsed', collapsed);
+  $('#collapseNav').textContent = collapsed ? '»' : '«';
+  $('#collapseNav').title = collapsed ? 'Expand navigation' : 'Collapse navigation';
+  $('#collapseNav').setAttribute('aria-label', $('#collapseNav').title);
+}
+resizeNavigation(navigationWidth);
+$('#collapseNav').addEventListener('click', () => collapseNavigation(!navigationPane.classList.contains('collapsed')));
+navResizeHandle.addEventListener('pointerdown', event => {
+  if (event.button !== 0) return;
+  event.preventDefault();
+  collapseNavigation(false);
+  navResizeHandle.setPointerCapture(event.pointerId);
+  navResizeHandle.classList.add('dragging');
 });
+navResizeHandle.addEventListener('pointermove', event => {
+  if (!navResizeHandle.hasPointerCapture(event.pointerId)) return;
+  resizeNavigation(event.clientX - $('.workspace').getBoundingClientRect().left);
+});
+function finishNavigationResize(event) {
+  if (!navResizeHandle.hasPointerCapture(event.pointerId)) return;
+  navResizeHandle.releasePointerCapture(event.pointerId);
+  navResizeHandle.classList.remove('dragging');
+  resizeNavigation(navigationWidth, true);
+}
+navResizeHandle.addEventListener('pointerup', finishNavigationResize);
+navResizeHandle.addEventListener('pointercancel', finishNavigationResize);
+navResizeHandle.addEventListener('dblclick', () => resizeNavigation(defaultNavigationWidth(), true));
+navResizeHandle.addEventListener('keydown', event => {
+  const step = event.shiftKey ? 40 : 16;
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') resizeNavigation(navigationWidth + (event.key === 'ArrowLeft' ? -step : step), true);
+  else if (event.key === 'Home') resizeNavigation(122, true);
+  else if (event.key === 'End') resizeNavigation(maximumNavigationWidth(), true);
+  else return;
+  collapseNavigation(false);
+  event.preventDefault();
+});
+window.addEventListener('resize', () => resizeNavigation(navigationWidth));
 $('#zoomRange').addEventListener('input', event => {
   const zoom = Number(event.target.value);
   $('#zoomLabel').textContent = `${zoom}%`;

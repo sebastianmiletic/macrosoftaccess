@@ -26,7 +26,7 @@ The installer will be in `release/`. The app icon and UI logo are generated from
 
 ## Implemented features
 
-- Native macOS window frame, expanded menus, open/save panels, keyboard shortcuts, ribbon, object navigation, right-click object menus, document tabs, command palette, status bar and zoom.
+- Native macOS window frame, working menus, open/save panels, keyboard shortcuts, ribbon, resizable and collapsible object navigation with collapsible groups, right-click object menus, document tabs, command palette, status bar and zoom.
 - User-supplied logo in the title bar, welcome screen, File view and macOS app icon; familiar red ribbon styling, contextual object tabs, stateful button feedback and opening/closing transitions (disabled by reduced-motion settings).
 - Access-inspired start screen with Home, New, Open, searchable recent files and working Blank, Contacts, Inventory and Tasks templates; additional File pages for Info, Import, Export, Options and Help.
 - Local application settings (light/dark theme, density, query result limit, action confirmation) and a per-database default table view.
@@ -40,7 +40,7 @@ The installer will be in `release/`. The app icon and UI logo are generated from
 
 ## Visual parity boundaries
 
-The start screen and table workspace follow the placement and density of the supplied Access screenshots, with original Macrosoft branding. This is not a pixel-identical Windows Access UI or a complete toolbar inventory. Controls appear only where a local implementation exists; unsupported Access controls are not shown as working buttons. Editing an existing `.accdb` in place, VBA and full ACE/Jet objects remain outside this build.
+The start screen and table workspace follow the placement and density of the supplied Access screenshots, with original Macrosoft branding. The contextual ribbon and Help/search positions, persistent resizable navigation width, object groups and small-window layout were refined against the table screenshot. This is not a pixel-identical Windows Access UI or a complete toolbar inventory. Controls appear only where a local implementation exists; unsupported Access controls are not shown as working buttons. Editing an existing `.accdb` in place, VBA and full ACE/Jet objects remain outside this build.
 
 ## Access format limitations
 
@@ -84,6 +84,7 @@ node tests/template-smoke.mjs
 # On another fresh test instance:
 node tests/form-smoke.mjs
 node tests/report-design-smoke.mjs
+node tests/layout-smoke.mjs
 npm run build:access-writer && node tests/access-export-integration.mjs
 # Optional real-format integration test, with a fixture from mdbtools/mdbtestdata:
 ACCESS_FIXTURE=/path/to/ASampleDatabase.accdb node tests/access-import-smoke.mjs

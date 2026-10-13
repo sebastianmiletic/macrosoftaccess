@@ -15,8 +15,8 @@
         <button class="icon-button" data-action="undo" title="Undo" disabled>↶</button>
         <button class="icon-button" data-action="redo" title="Redo" disabled>↷</button>
       </div>
+      <span class="context-ribbon-label hidden" id="contextRibbonLabel">TABLE TOOLS</span>
       <div class="document-title"><img class="app-mark" src="/assets/logo-transparent.png" alt="" /><span id="windowTitle">Macrosoft Access</span></div>
-      <button class="title-search" data-action="command-palette" title="Search commands and objects (⌘K)"><span>⌕</span> Tell me what you want to do</button>
       <div class="title-spacer"></div>
     </header>
 
@@ -26,12 +26,13 @@
       <button class="ribbon-tab" data-tab="create">Create</button>
       <button class="ribbon-tab" data-tab="external">External Data</button>
       <button class="ribbon-tab" data-tab="tools">Database Tools</button>
-      <span class="context-ribbon-label hidden" id="contextRibbonLabel">TABLE TOOLS</span>
+      <button class="ribbon-tab" data-tab="help">Help</button>
       <button class="ribbon-tab contextual hidden" data-tab="table-fields">Fields</button>
       <button class="ribbon-tab contextual hidden" data-tab="table-design">Table Design</button>
       <button class="ribbon-tab contextual hidden" data-tab="query-tools">Query Tools</button>
       <button class="ribbon-tab contextual hidden" data-tab="form-tools">Form Tools</button>
       <button class="ribbon-tab contextual hidden" data-tab="report-tools">Report Tools</button>
+      <button class="title-search" data-action="command-palette" title="Search commands and objects (⌘K)"><span>⌕</span> Tell me what you want to do</button>
     </nav>
 
     <section id="ribbon" class="ribbon" aria-label="Command ribbon">
@@ -98,6 +99,10 @@
         <div class="command-group"><button class="command large" data-action="sql-query"><span class="command-icon">SQL</span><span>SQL Console</span></button><button class="command large" data-action="integrity-check"><span class="command-icon">✓</span><span>Check Health</span></button><button class="command large" data-action="backup"><span class="command-icon">⧉</span><span>Backup</span></button><span class="group-label">Advanced</span></div>
       </div>
 
+      <div class="ribbon-page" data-page="help">
+        <div class="command-group"><button class="command large" data-action="help"><span class="command-icon">?</span><span>Help</span></button><button class="command large" data-action="command-palette"><span class="command-icon">⌕</span><span>Find command</span></button><span class="group-label">Support</span></div>
+        <div class="command-group"><button class="command large" data-action="compatibility-report"><span class="command-icon">◎</span><span>Compatibility</span></button><button class="command large" data-action="options"><span class="command-icon">⚙</span><span>Options</span></button><span class="group-label">Information</span></div>
+      </div>
       <div class="ribbon-page" data-page="table-fields">
         <div class="command-group"><button class="command large" data-action="view"><span class="command-icon">▦</span><span>View</span></button><span class="group-label">Views</span></div>
         <div class="command-group"><button class="command large" data-quick-field="TEXT" title="Add a local SQLite text field"><span class="command-icon">AB</span><span>Short Text</span></button><button class="command large" data-quick-field="INTEGER" title="Add an integer field"><span class="command-icon">12</span><span>Number</span></button><button class="command large" data-quick-field="DATE" title="Add a date text field"><span class="command-icon">▦</span><span>Date & Time</span></button><button class="command large" data-quick-field="BOOLEAN" title="Add a 0/1 field"><span class="command-icon">☑</span><span>Yes/No</span></button><button class="command large" data-action="add-field"><span class="command-icon">＋</span><span>More Fields</span></button><span class="group-label">Add fields</span></div>
@@ -118,11 +123,12 @@
     </section>
 
     <main class="workspace">
-      <aside class="navigation-pane">
-        <div class="pane-heading"><strong>All Objects</strong><button class="icon-button" id="collapseNav" title="Collapse navigation">«</button></div>
+      <aside id="navigationPane" class="navigation-pane">
+        <div class="pane-heading"><strong title="All Access Objects">All Access Objects</strong><button class="icon-button" id="collapseNav" title="Collapse navigation" aria-label="Collapse navigation">«</button></div>
         <label class="search-box"><span>⌕</span><input id="objectSearch" type="search" placeholder="Search objects" /></label>
         <div id="objectTree" class="object-tree"></div>
       </aside>
+      <div id="navResizeHandle" class="nav-resize" role="separator" tabindex="0" aria-orientation="vertical" aria-controls="navigationPane" aria-label="Resize navigation pane" aria-valuemin="122" aria-valuemax="400" aria-valuenow="122" title="Drag or use arrow keys to resize navigation; double-click to reset"></div>
 
       <section class="document-area">
         <div id="documentTabs" class="document-tabs" role="tablist"></div>
