@@ -133,7 +133,14 @@ async function renderBackstage(page = 'info') {
   $$('[data-file-page]').forEach(button => button.classList.toggle('active', button.dataset.filePage === page));
   const content = $('#backstageContent');
   const row = (icon, title, description, action) => `<div class="file-action-row"><span>${icon}</span><div><strong>${title}</strong><p>${description}</p></div><button class="secondary-button" data-action="${action}">Open</button></div>`;
-  if (page === 'info') {
+  const recentRows = recent => recent.length ? recent.map(item => `<div class="recent-row"><button data-recent-path="${escapeHtml(item.path)}" ${item.available ? '' : 'disabled'}><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.path)}${item.available ? '' : ' · Unavailable'}</small></button><button class="recent-remove" data-remove-recent="${escapeHtml(item.path)}" title="Remove from recent">×</button></div>`).join('') : '<p>No recent databases yet. Create one or browse for a local file.</p>';
+  if (page === 'home') {
+    content.innerHTML = `<div class="file-home"><h1>Good ${new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 18 ? 'afternoon' : 'evening'}</h1><section class="home-new"><h2>New</h2><div class="home-templates"><button data-action="new"><span class="template-symbol">▤</span><strong>Blank database</strong></button><button data-action="template-contacts"><span class="template-symbol">♙</span><strong>Contacts</strong></button><button data-action="template-inventory"><span class="template-symbol">▦</span><strong>Inventory</strong></button><button data-action="template-tasks"><span class="template-symbol">☑</span><strong>Tasks</strong></button></div></section><section class="home-recent"><div class="home-recent-header"><h2>Recent databases</h2><button class="secondary-button" data-action="open">Browse files…</button></div><label class="home-search">⌕ <input id="homeRecentSearch" type="search" aria-label="Search recent databases" placeholder="Search recent databases"></label><div id="recentList" class="recent-list">Loading recent files…</div></section><p class="compat-note">Projects use local SQLite files. Access .mdb/.accdb table data can be imported, but native Access files cannot be edited or saved.</p></div>`;
+    try {
+      const recent = await window.desktop.recentFiles();
+      if (state.backstagePage === 'home') $('#recentList').innerHTML = recentRows(recent);
+    } catch (error) { if (state.backstagePage === 'home') $('#recentList').textContent = `Could not load recent files: ${error.message}`; }
+  } else if (page === 'info') {
     content.innerHTML = `<h1>Database information</h1><div class="file-info"><img class="file-logo" src="${logoUrl}" alt="Macrosoft Access logo" /><div><h2>${escapeHtml(state.fileName || 'No database open')}</h2><p>${escapeHtml(state.filePath || 'Create or open a database to begin.')}</p></div></div><div class="file-actions">${row('ⓘ', 'Properties', 'Tables, records, file size and storage engine.', 'database-info')}${row('◎', 'Compatibility report', 'See preserved, converted and unsupported Access objects.', 'compatibility-report')}${row('⧉', 'Back up database', 'Save a separate portable snapshot.', 'backup')}${row('✓', 'Check integrity', 'Inspect SQLite pages and indexes.', 'integrity-check')}${row('◫', 'Compact database', 'Reclaim unused storage.', 'compact')}</div><p class="compat-note">Access .mdb/.accdb table data can be imported with mdbtools. Native files use SQLite, not the Microsoft Access engine.</p>`;
   } else if (page === 'new') {
     content.innerHTML = `<h1>New</h1><p class="page-lede">Start with a blank database or a ready-to-edit local template.</p><div class="template-list">${row('▦', 'Blank database', 'Create your own tables and relationships.', 'new')}${row('♟', 'Contacts', 'People, organisations and contact details.', 'template-contacts')}${row('▤', 'Inventory', 'Products, quantities and stock locations.', 'template-inventory')}${row('✓', 'Tasks', 'Track tasks, owners, priorities and due dates.', 'template-tasks')}</div>`;
@@ -142,7 +149,7 @@ async function renderBackstage(page = 'info') {
     try {
       const recent = await window.desktop.recentFiles();
       if (state.backstagePage !== 'open') return;
-      $('#recentList').innerHTML = recent.length ? recent.map(item => `<div class="recent-row"><button data-recent-path="${escapeHtml(item.path)}" ${item.available ? '' : 'disabled'}><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.path)}${item.available ? '' : ' · Unavailable'}</small></button><button class="recent-remove" data-remove-recent="${escapeHtml(item.path)}" title="Remove from recent">×</button></div>`).join('') : '<p>No recent databases yet.</p>';
+      $('#recentList').innerHTML = recentRows(recent);
     } catch (error) { $('#recentList').textContent = `Could not load recent files: ${error.message}`; }
   } else if (page === 'import') {
     content.innerHTML = `<h1>Import</h1><p class="page-lede">Bring data into a local database.</p><div class="file-actions">${row('CSV', 'Text / CSV', 'Create a new table from a header row and records.', 'import-csv')}${row('▦', 'Access .mdb / .accdb', 'Import table data using mdbtools. Objects and VBA are not preserved.', 'import-database')}</div>`;
@@ -426,6 +433,11 @@ function updateContextualRibbon() {
     $$('.ribbon-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.tab === 'home'));
     $$('.ribbon-page').forEach(page => page.classList.toggle('active', page.dataset.page === 'home'));
   }
+  if (type === 'table' && $('.ribbon-tab.active')?.dataset.tab === 'home') {
+    const page = state.tabs.find(tab => tab.id === state.activeTab)?.view === 'design' ? 'table-design' : 'table-fields';
+    $$('.ribbon-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.tab === page));
+    $$('.ribbon-page').forEach(ribbon => ribbon.classList.toggle('active', ribbon.dataset.page === page));
+  }
 }
 
 function renderTabs() {
@@ -506,6 +518,19 @@ function addField() {
   $('#newFieldName')?.focus();
 }
 
+function quickAddField(type) {
+  const tab = state.tabs.find(item => item.id === state.activeTab);
+  if (tab?.type !== 'table' || !['TEXT', 'INTEGER', 'DATE', 'BOOLEAN'].includes(type)) return;
+  const columns = getColumns(tab.name);
+  let number = 1;
+  while (columns.some(column => column.name.toLowerCase() === `field${number}`)) number++;
+  const name = `Field${number}`;
+  try {
+    state.db.run(`ALTER TABLE ${quoteId(tab.name)} ADD COLUMN ${quoteId(name)} ${type}`);
+    markDirty(); renderActiveTab(); toast(`${name} added (${type}). Review the schema in Table Design View.`);
+  } catch (error) { toast(`Could not add field: ${error.message}`, 'error'); }
+}
+
 function commitField() {
   const table = $('.design-view')?.dataset.designTable;
   if (!table) return;
@@ -544,7 +569,7 @@ function renderDatasheet(table) {
     const params = where ? [`%${state.filter.term}%`] : [];
     const rows = rowsFromExec(`SELECT rowid AS __rowid__, * FROM ${quoteId(table)}${where} LIMIT ${Number(state.settings.rows) || 1000}`, params);
     state.lastResults = { name: table, columns: columns.map(c => c.name), rows };
-    $('#documentSurface').innerHTML = `<div class="datasheet-wrap"><table class="datasheet" data-table="${escapeHtml(table)}"><thead><tr><th class="row-selector"></th>${columns.map(c => `<th title="${escapeHtml(c.type || 'ANY')}">${escapeHtml(c.name)}${c.pk ? ' 🔑' : ''}</th>`).join('')}<th>＋ Add Field</th></tr></thead><tbody>${rows.map((row, index) => `<tr data-rowid="${escapeHtml(row.__rowid__)}"><td class="row-selector">${index + 1}</td>${columns.map(c => `<td><input class="cell-input" data-column="${escapeHtml(c.name)}" value="${escapeHtml(row[c.name])}" aria-label="${escapeHtml(c.name)}, row ${index + 1}"></td>`).join('')}<td></td></tr>`).join('')}<tr class="new-row" data-new-row><td class="row-selector">＊</td>${columns.map(c => `<td><input class="cell-input" data-column="${escapeHtml(c.name)}" placeholder="${c.pk ? '(AutoNumber)' : '(New)'}" aria-label="New ${escapeHtml(c.name)}"></td>`).join('')}<td></td></tr></tbody></table></div>`;
+    $('#documentSurface').innerHTML = `<div class="datasheet-wrap"><table class="datasheet" data-table="${escapeHtml(table)}"><thead><tr><th class="row-selector"></th>${columns.map(c => `<th title="${escapeHtml(c.type || 'ANY')}">${escapeHtml(c.name)}${c.pk ? ' 🔑' : ''}</th>`).join('')}<th><button class="datasheet-add-field" data-action="add-field" title="Open Table Design to add a field">Click to Add ▾</button></th></tr></thead><tbody>${rows.map((row, index) => `<tr data-rowid="${escapeHtml(row.__rowid__)}"><td class="row-selector">${index + 1}</td>${columns.map(c => `<td><input class="cell-input" data-column="${escapeHtml(c.name)}" value="${escapeHtml(row[c.name])}" aria-label="${escapeHtml(c.name)}, row ${index + 1}"></td>`).join('')}<td></td></tr>`).join('')}<tr class="new-row" data-new-row><td class="row-selector">＊</td>${columns.map(c => `<td><input class="cell-input" data-column="${escapeHtml(c.name)}" placeholder="${c.pk ? '(AutoNumber)' : '(New)'}" aria-label="New ${escapeHtml(c.name)}"></td>`).join('')}<td></td></tr></tbody></table></div>`;
     setStatus(state.filter?.table === table ? `Filtered: ${state.filter.field} contains “${state.filter.term}”` : 'Datasheet View', `${rows.length} record${rows.length === 1 ? '' : 's'}`);
   } catch (error) { showError(error); }
 }
@@ -1226,7 +1251,7 @@ function sortDatasheet(ascending) {
 document.addEventListener('click', event => {
   const ribbonTab = event.target.closest('[data-tab]');
   if (ribbonTab) {
-    if (ribbonTab.dataset.tab === 'file') showBackstage('info');
+    if (ribbonTab.dataset.tab === 'file') showBackstage(state.db ? 'info' : 'home');
     else {
       $$('.ribbon-tab').forEach(t => t.classList.toggle('active', t === ribbonTab));
       $$('.ribbon-page').forEach(p => p.classList.toggle('active', p.dataset.page === ribbonTab.dataset.tab));
@@ -1237,7 +1262,7 @@ document.addEventListener('click', event => {
   const recent = event.target.closest('[data-recent-path]')?.dataset.recentPath;
   if (recent) openDatabase(recent);
   const removed = event.target.closest('[data-remove-recent]')?.dataset.removeRecent;
-  if (removed) window.desktop.removeRecent(removed).then(() => renderBackstage('open'));
+  if (removed) window.desktop.removeRecent(removed).then(() => renderBackstage(state.backstagePage));
   const contextAction = event.target.closest('[data-context-action]')?.dataset.contextAction;
   if (contextAction) handleObjectContext(contextAction);
   else if (!event.target.closest('#contextMenu')) $('#contextMenu').classList.add('hidden');
@@ -1260,6 +1285,8 @@ document.addEventListener('click', event => {
       saveReportDesign(item.name, settings);
     }
   }
+  const quickField = event.target.closest('[data-quick-field]');
+  if (quickField) quickAddField(quickField.dataset.quickField);
   const action = event.target.closest('[data-action]')?.dataset.action;
   if (action) performAction(action);
   const object = event.target.closest('[data-object-type]');
@@ -1357,6 +1384,12 @@ document.addEventListener('change', event => {
 });
 
 $('#objectSearch').addEventListener('input', event => renderObjectTree(event.target.value));
+document.addEventListener('input', event => {
+  if (event.target.id === 'homeRecentSearch') {
+    const term = event.target.value.trim().toLocaleLowerCase();
+    $$('.recent-row', $('#recentList')).forEach(row => { row.hidden = !row.textContent.toLocaleLowerCase().includes(term); });
+  }
+});
 $('#collapseNav').addEventListener('click', () => {
   $('.navigation-pane').classList.toggle('collapsed');
   $('#collapseNav').textContent = $('.navigation-pane').classList.contains('collapsed') ? '»' : '«';
@@ -1389,3 +1422,4 @@ refreshObjects();
 updateFileInfo();
 setStatus('Ready');
 renderViewControls();
+showBackstage('home');

@@ -6,7 +6,7 @@ This is an implementation tracker, not a statement of parity with any Microsoft 
 | --- | --- | --- |
 | macOS shell and startup | Partial | Native window, menus, ribbon-style controls, tabs, search, templates and recent files. No exact Access visual parity, recovery or startup form. |
 | Project persistence | Partial | Local SQLite files, atomic save, backups, versioned private metadata. No crash recovery, concurrent locking or migration preview. |
-| Tables and datasheets | Partial | Explicit Datasheet/Design views; create/edit records and add fields with type, default and required setting from the designer. Existing field definitions remain read-only; no full Access type matrix, validation designer, multi-cell selection or undo. |
+| Tables and datasheets | Partial | Access-inspired compact datasheet and contextual Fields ribbon with working quick-add text, integer, date and boolean fields; explicit Datasheet/Design views; inline field type/default/required settings. Existing fields remain read-only; no full Access type matrix, validation designer, multi-cell selection or undo. |
 | Relationships | Partial | Visual metadata relationships; not enforced by SQLite unless defined explicitly in SQL. |
 | Queries | Partial | SQLite SQL editor, single-table field picker and opt-in, tested Access-style expression/TOP translation with SQL preview. No full ACE/Jet SQL engine, complete QBE, query history or debugger. |
 | Forms | Partial | Generated bound single-record editor with saved form title, captions, bound field visibility/required settings, text/long text/number/date/checkbox controls, reorder by drag or keyboard-accessible buttons. No free-placement designer, subforms, lookup controls, macros or events. |
@@ -14,7 +14,7 @@ This is an implementation tracker, not a statement of parity with any Microsoft 
 | Macros and scripting | Not implemented | No VBA interpreter, Access object model, macro builder or trusted script runtime. |
 | Import/export | Partial | CSV import/export; mdbtools `.mdb/.accdb` table data import with schema-informed SQLite integer/real mapping and conversion report. No round-trip `.accdb`, Access query/form/report conversion, linked sources, Excel or ODBC. |
 | Compatibility inspection | Partial | Conversion report lists imported tables, row counts and known unsupported families. Cannot inventory every unsupported Access object from the file. |
-| Settings and accessibility | Partial | Persisted theme/density/query limit and database table view, visible focus and reduced-motion support. No complete preference catalogue or audited VoiceOver support. |
+| Settings and accessibility | Partial | Access-inspired start screen with searchable recent local files; persisted theme/density/query limit and database table view, visible focus and reduced-motion support. No exact Windows Access UI, complete preference catalogue or audited VoiceOver support. |
 | Platform and distribution | Partial | macOS-only runtime and Apple Silicon DMG; signed where identity is available, not notarised. Linux is not supported yet. |
 
 ## Release gates from the expanded specification

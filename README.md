@@ -28,15 +28,19 @@ The installer will be in `release/`. The app icon and UI logo are generated from
 
 - Native macOS window frame, expanded menus, open/save panels, keyboard shortcuts, ribbon, object navigation, right-click object menus, document tabs, command palette, status bar and zoom.
 - User-supplied logo in the title bar, welcome screen, File view and macOS app icon; familiar red ribbon styling, contextual object tabs, stateful button feedback and opening/closing transitions (disabled by reduced-motion settings).
-- File pages for Info, New, Open, Import, Export, Options and Help; recent files and Contacts, Inventory and Tasks templates.
+- Access-inspired start screen with Home, New, Open, searchable recent files and working Blank, Contacts, Inventory and Tasks templates; additional File pages for Info, Import, Export, Options and Help.
 - Local application settings (light/dark theme, density, query result limit, action confirmation) and a per-database default table view.
 - Local SQLite-backed `.macrodb`, `.sqlite` and `.db` files; create, open, save and save-as. Internal project metadata is versioned and rejects newer unsupported versions.
-- Tables: explicit Datasheet/Design view switcher; create fields using SQLite types and constraints, inspect schema, add fields with type/default/required options in Design View, add indexes, edit cells and records, sort and delete records. Existing field type and constraint changes still require manual SQLite migration.
+- Tables: compact datasheet and contextual Fields ribbon with working Short Text, Number, Date & Time, Yes/No and More Fields actions; explicit Datasheet/Design switcher; add fields with type/default/required options in Design View, indexes, record editing and sorting. SQLite does not enforce all Access type semantics; existing field changes still require manual migration.
 - Queries: SQLite SQL editor, saved queries, results grid, basic single-table visual field picker, confirmation for action SQL. Optional Access-style SQL subset with `SELECT TOP`, `&` concatenation, `Left`, `Right`, `Mid`, `Nz`, `IIf`, `InStr`, `Date`, `Now` and `Len`; the original SQL and its dialect are saved with each query.
 - Generated single-record forms with a saved Design View (caption, control type, visibility, required setting, ordering), record entry/navigation. Reports have a saved Design View for title, column visibility/order and sorting plus a printable preview and PDF export; grouping and calculated controls are not supported.
 - Relationship diagram with **metadata-only** relationship declarations, not enforced foreign keys. For enforced constraints, create SQLite foreign keys using SQL.
 - CSV import/export; best-effort `.mdb` and `.accdb` **table data import** using `mdbtools`, with a saved conversion report listing imported tables, row counts and known losses.
 - Backup snapshot, integrity check and compact (`VACUUM`).
+
+## Visual parity boundaries
+
+The start screen and table workspace follow the placement and density of the supplied Access screenshots, with original Macrosoft branding. This is not a pixel-identical Windows Access UI or a complete toolbar inventory. Controls appear only where a local implementation exists; unsupported Access controls are not shown as working buttons. Native `.accdb` editing, VBA and full ACE/Jet objects remain outside this build.
 
 ## Access format limitations
 

@@ -28,12 +28,17 @@ async function evaluate(expression) {
 try {
   assert.equal(await evaluate('document.title'), 'Macrosoft Access');
   assert.equal(await evaluate('document.querySelector(".app-mark")?.naturalWidth > 0'), true);
-  await evaluate('document.querySelector("[data-action=new]").click()');
+  assert.equal(await evaluate('document.querySelector(".file-home") !== null'), true);
+  assert.equal(await evaluate('document.querySelectorAll(".home-templates [data-action]").length'), 4);
+  await evaluate('document.querySelector(".home-templates [data-action=new]").click()');
   assert.equal(await evaluate('document.querySelector("#tableDialog").open'), true);
   await evaluate(`(() => { document.querySelector('#tableName').value = 'Customers'; document.querySelector('#tableFields').value = 'id INTEGER PRIMARY KEY AUTOINCREMENT\\nname TEXT NOT NULL\\nemail TEXT'; document.querySelector('#confirmTable').click(); })()`);
   assert.equal(await evaluate('document.querySelector(".document-tab .tab-name")?.textContent'), 'Customers');
   assert.equal(await evaluate('document.querySelector("[data-tab=table-fields]").classList.contains("hidden")'), false);
+  assert.equal(await evaluate('document.querySelector("[data-tab=table-fields]").classList.contains("active")'), true);
   await evaluate('document.querySelector("[data-tab=table-fields]").click()');
+  await evaluate('document.querySelector("[data-quick-field=INTEGER]").click()');
+  assert.equal(await evaluate('document.querySelector(".datasheet thead")?.textContent.includes("Field1")'), true);
   assert.equal(await evaluate('document.querySelector("[data-page=table-fields]").classList.contains("active")'), true);
   await evaluate('document.querySelector("[data-tab=home]").click()');
   await evaluate('document.querySelector("[data-action=new-record]").click()');

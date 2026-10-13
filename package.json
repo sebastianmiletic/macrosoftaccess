@@ -1,6 +1,6 @@
 {
   "name": "macrosoft-access",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "A local-first visual relational database studio for macOS",
   "main": "electron/main.cjs",
   "type": "module",
